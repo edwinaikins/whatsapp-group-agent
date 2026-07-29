@@ -1,28 +1,5 @@
-const fs = require('fs');
-const path = require('path');
 const cron = require('node-cron');
-
-function loadBirthdays(csvPath) {
-  const fullPath = path.join(__dirname, '..', '..', csvPath);
-  if (!fs.existsSync(fullPath)) return [];
-  const lines = fs.readFileSync(fullPath, 'utf8').trim().split('\n');
-  const [header, ...rows] = lines;
-  const cols = header.split(',').map((c) => c.trim().toLowerCase());
-  return rows
-    .filter((r) => r.trim())
-    .map((row) => {
-      const values = row.split(',').map((v) => v.trim());
-      const rec = {};
-      cols.forEach((c, i) => { rec[c] = values[i]; });
-      return {
-        phone: (rec.phone || '').replace(/\D/g, ''),
-        name: rec.name || 'friend',
-        month: parseInt(rec.month, 10),
-        day: parseInt(rec.day, 10),
-      };
-    })
-    .filter((r) => r.phone && r.month && r.day);
-}
+const { getTable } = require('../airtable');
 
 function register(sock, cfg) {
   const { birthdays, groupJid, timezone } = cfg;
@@ -30,23 +7,33 @@ function register(sock, cfg) {
 
   const run = async () => {
     try {
-      const list = loadBirthdays(birthdays.csvPath);
+      const records = await getTable('Birthdays');
       const now = new Date();
-      // "now" is evaluated in the server's local time; cron already runs
-      // this in the configured timezone, so getMonth/getDate is fine as
-      // long as the process TZ matches — see README for the TZ env note.
-      const todays = list.filter(
-        (b) => b.month === now.getMonth() + 1 && b.day === now.getDate()
-      );
+      const todays = records.filter((r) => {
+        const f = r.fields || {};
+        return Number(f.Month) === now.getMonth() + 1 && Number(f.Day) === now.getDate();
+      });
+
       if (!todays.length) {
         console.log('[birthday] No birthdays today.');
         return;
       }
-      for (const person of todays) {
-        const jid = `${person.phone}@s.whatsapp.net`;
-        const text = birthdays.messageTemplate.replace('{name}', person.name);
-        await sock.sendMessage(groupJid, { text, mentions: [jid] });
-        console.log(`[birthday] Wished ${person.name} a happy birthday.`);
+
+      for (const rec of todays) {
+        const f = rec.fields || {};
+        const name = f.Name || 'friend';
+        const phone = String(f.Phone || '').replace(/\D/g, '');
+        const jid = phone ? `${phone}@s.whatsapp.net` : undefined;
+        const text = birthdays.messageTemplate.replace('{name}', name);
+        const photoUrl = Array.isArray(f.Photo) && f.Photo[0] ? f.Photo[0].url : undefined;
+        const mentions = jid ? [jid] : undefined;
+
+        if (photoUrl) {
+          await sock.sendMessage(groupJid, { image: { url: photoUrl }, caption: text, mentions });
+        } else {
+          await sock.sendMessage(groupJid, { text, mentions });
+        }
+        console.log(`[birthday] Wished ${name} a happy birthday.`);
       }
     } catch (err) {
       console.error('[birthday] Failed to send birthday wishes:', err.message);
@@ -57,4 +44,4 @@ function register(sock, cfg) {
   console.log(`[birthday] Scheduled with cron "${birthdays.cron}" (${timezone})`);
 }
 
-module.exports = { register, loadBirthdays };
+module.exports = { register };

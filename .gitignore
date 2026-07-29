@@ -6,3 +6,4 @@ data/agent.sqlite-*
 *.log
 .deploy_key/
 data/birthdays.csv
+data/airtable-cache/

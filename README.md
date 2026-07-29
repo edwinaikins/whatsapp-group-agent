@@ -3,9 +3,14 @@
 A self-hosted bot that manages one WhatsApp group:
 
 1. Rotates the group title on a schedule.
-2. Posts a daily activity/prompt.
+2. Posts a daily activity/prompt (optionally with an image).
 3. Tracks who's been quiet and posts an idle-member report.
-4. Sends birthday wishes from a CSV list you maintain.
+4. Sends birthday wishes (optionally with a photo) from a list you maintain.
+
+The content for #1, #2, and #4 (titles, activity prompts, birthday list)
+lives in an **Airtable base** rather than in files on the server, so you
+can edit it from a normal spreadsheet-style UI — including uploading
+photos — without touching the VPS. See "Set up the Airtable base" below.
 
 It logs into WhatsApp as a **regular linked device** on a phone number you
 control (using the [Baileys](https://github.com/WhiskeySockets/Baileys)
@@ -25,9 +30,55 @@ below before you rely on this.
 - **Birthdays and idle detection are best-effort.** Idle tracking only
   sees messages sent *after* the bot is running and connected — it has
   no way to see history from before it joined. Birthdays come entirely
-  from `data/birthdays.csv`; WhatsApp does not expose profile birthdates.
+  from the Airtable Birthdays table; WhatsApp does not expose profile
+  birthdates.
+- **If Airtable is unreachable** (bad token, network hiccup, Airtable
+  outage) when a scheduled job fires, the bot falls back to the last
+  successfully fetched copy of that table, cached on disk under
+  `data/airtable-cache/`. Only if there's no cache yet does it skip
+  that run.
 
-## 1. One-time setup
+## 1. Set up the Airtable base
+
+Create a free account at [airtable.com](https://airtable.com) and make a
+new base (e.g. named "WhatsApp Group Agent") with these three tables:
+
+**Titles** — used for the group-title rotation
+| Field  | Type          |
+|--------|---------------|
+| Title  | Single line text |
+| Order  | Number (sets rotation order) |
+
+**ActivityPrompts** — used for the daily activity post
+| Field  | Type          |
+|--------|---------------|
+| Prompt | Long text     |
+| Image  | Attachment (optional — attach a photo to include it in that day's post) |
+| Order  | Number (sets rotation order) |
+
+**Birthdays** — used for birthday wishes
+| Field  | Type          |
+|--------|---------------|
+| Name   | Single line text |
+| Phone  | Single line text (digits only, country code, no `+`, e.g. `233241234567`) |
+| Month  | Number (1-12) |
+| Day    | Number (1-31) |
+| Photo  | Attachment (optional — attach a photo to include it in that day's wish) |
+
+Fill in a few rows in each table now. For photos, keep them reasonably
+sized (resize to ~800px wide before uploading) — Airtable's free tier
+caps attachment storage at 1GB per base, and WhatsApp recompresses
+images on send anyway, so a smaller source file loses nothing visible.
+
+Then get your credentials:
+- **Personal access token**: click your account icon → **Developer Hub**
+  → **Personal access tokens** → **Create token**. Give it the
+  `data.records:read` scope, and under "Access" add just this one base.
+  Copy the token (starts with `pat...`).
+- **Base ID**: open the base → **Help** → **API documentation** (or just
+  look at the base's URL) — it looks like `appXXXXXXXXXXXXXX`.
+
+## 2. One-time setup
 
 ```bash
 npm install
@@ -38,20 +89,17 @@ Edit `.env`:
 - Leave `GROUP_JID` blank for now.
 - Set `BOT_PHONE_NUMBER` to the dedicated number's full international
   number, digits only (e.g. `233241234567`).
+- Set `AIRTABLE_TOKEN` and `AIRTABLE_BASE_ID` from the step above.
 - `TIMEZONE` defaults to `Africa/Accra` — change if needed.
 
-Edit `data/birthdays.csv` with your real list — columns are
-`phone,name,month,day` (phone = digits only, no `+`, month/day as
-numbers, e.g. `7,29` for July 29).
-
-Edit `config.json` to adjust the title list, activity prompts, idle
-threshold, and cron schedules to taste. Cron format is
-`minute hour day-of-month month day-of-week`, evaluated in the
-`TIMEZONE` you set. A couple of examples:
+Edit `config.json` to adjust cron schedules and the idle threshold to
+taste (the actual titles/prompts/birthdays now live in Airtable, not
+here). Cron format is `minute hour day-of-month month day-of-week`,
+evaluated in the `TIMEZONE` you set. A couple of examples:
 - `0 6 * * 1` → every Monday at 6:00am
 - `0 9 * * *` → every day at 9:00am
 
-## 2. Link the bot to WhatsApp
+## 3. Link the bot to WhatsApp
 
 Run it once locally/interactively:
 
@@ -75,7 +123,7 @@ Then send any message in your target group. The console will print:
 Copy that into `.env` as `GROUP_JID`, stop the process (Ctrl+C), and
 restart it. From now on it'll pick up the group automatically.
 
-## 3. Deploy it to run 24/7
+## 4. Deploy it to run 24/7
 
 The bot needs a long-lived process (it holds an open WebSocket to
 WhatsApp), so it can't run as a serverless function — a small
@@ -124,14 +172,16 @@ pm2 save
 pm2 startup   # follow the printed instructions to survive reboots
 ```
 
-## 4. Day-to-day operation
+## 5. Day-to-day operation
 
 - Logs print to the console (or `docker compose logs -f` / `pm2 logs`).
-- To change schedules, titles, prompts, or the idle threshold, edit
-  `config.json` and restart the process — no re-linking needed.
-- To update birthdays, edit `data/birthdays.csv` and restart.
+- To change titles, activity prompts, or birthdays: just edit the rows
+  in the Airtable base — no server access, redeploy, or restart needed.
+  The bot fetches fresh data right before each scheduled action.
+- To change schedules or the idle threshold, edit `config.json` and
+  restart the process.
 - If the bot ever gets logged out (e.g. you unlink it from the phone),
-  delete the `auth_state/` folder and repeat step 2.
+  delete the `auth_state/` folder and repeat step 3.
 
 ## Project layout
 
@@ -139,13 +189,15 @@ pm2 startup   # follow the printed instructions to survive reboots
 src/
   config.js        loads config.json + .env
   db.js             SQLite: member last-seen tracking, small key/value store
+  airtable.js       fetches Titles/ActivityPrompts/Birthdays from Airtable,
+                     with an on-disk cache fallback
   whatsapp.js       Baileys connection + pairing-code login
   features/
-    titleRotator.js   scheduled group subject changes
-    dailyActivity.js  scheduled activity/prompt posts
+    titleRotator.js   scheduled group subject changes (from Airtable Titles)
+    dailyActivity.js  scheduled activity/prompt posts (from ActivityPrompts)
     idleReport.js     tracks last-seen timestamps, posts idle report
-    birthday.js        reads data/birthdays.csv, posts wishes
+    birthday.js        birthday wishes (from Airtable Birthdays)
   index.js          wires it all together
-config.json         all schedules/content, safe to edit anytime
-data/birthdays.csv  your birthday list
+config.json               schedules + idle threshold, safe to edit anytime
+data/airtable-cache/       auto-generated fallback cache, not for editing
 ```
