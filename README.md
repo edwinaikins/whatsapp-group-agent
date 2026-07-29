@@ -214,6 +214,9 @@ From there you can:
   the group, or specific people by phone number — WhatsApp requires
   the message text to actually contain each tagged person's number for
   the tag to render, so the dashboard appends those automatically.
+  Already-sent or failed actions can be rescheduled for a new
+  date/time without recreating them from scratch — it reuses the same
+  text/image/tagging as the original.
 - **Title rotation** — add/remove/reorder the titles the bot cycles
   through on its schedule.
 - **Daily activity prompts** — add/remove/reorder prompts, optionally

@@ -415,15 +415,38 @@ async function loadPosts() {
         : (r.mention_phones ? ' <span class="muted">(tags specific people)</span>' : '');
       details = `${escapeHtml(r.text || '')} ${r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : ''}${tag}`;
     }
+    const actions = r.status === 'pending'
+      ? `<button class="danger" onclick="deletePost(${r.id})">Cancel</button>`
+      : `<button class="secondary" onclick="toggleReschedule(${r.id})">Reschedule</button>
+         <span id="reschedule-${r.id}" style="display:none; align-items:center; gap:6px; margin-top:6px;">
+           <input type="datetime-local" id="reschedule-when-${r.id}" />
+           <button onclick="confirmReschedule(${r.id})">Confirm</button>
+         </span>`;
     return `
     <tr>
       <td>${new Date(r.run_at).toLocaleString()}</td>
       <td>${ACTION_LABELS[type] || type}</td>
       <td>${details}</td>
       <td><span class="pill ${r.status}">${r.status}</span></td>
-      <td>${r.status === 'pending' ? `<button class="danger" onclick="deletePost(${r.id})">Cancel</button>` : ''}</td>
+      <td>${actions}</td>
     </tr>`;
   }).join('');
+}
+function toggleReschedule(id) {
+  const el = document.getElementById('reschedule-' + id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'inline-flex' : 'none';
+}
+async function confirmReschedule(id) {
+  const when = document.getElementById('reschedule-when-' + id).value;
+  if (!when) return toast('Pick a date/time', true);
+  await api('/api/scheduled-posts/' + id + '/reschedule', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ runAt: new Date(when).toISOString() }),
+  });
+  toast('Rescheduled');
+  loadPosts();
 }
 async function scheduleAction() {
   const type = document.getElementById('action-type').value;

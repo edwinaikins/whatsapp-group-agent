@@ -253,6 +253,15 @@ function deleteScheduledPost(id) {
   db.prepare("DELETE FROM scheduled_posts WHERE id = ? AND status = 'pending'").run(id);
 }
 
+// Puts an already-sent or failed post back in the queue at a new time,
+// reusing its existing type/text/image/mentions rather than making the
+// user redo all of that (and re-upload any image) from scratch.
+function rescheduleScheduledPost(id, runAtMs) {
+  db.prepare(
+    "UPDATE scheduled_posts SET run_at = ?, status = 'pending', sent_at = NULL, error = NULL WHERE id = ?"
+  ).run(runAtMs, id);
+}
+
 function getDuePosts(nowMs) {
   return db
     .prepare("SELECT * FROM scheduled_posts WHERE status = 'pending' AND run_at <= ? ORDER BY run_at ASC")
@@ -294,6 +303,7 @@ module.exports = {
   getScheduledPostById,
   createScheduledPost,
   deleteScheduledPost,
+  rescheduleScheduledPost,
   getDuePosts,
   markPostSent,
   markPostFailed,

@@ -24,6 +24,7 @@ const {
   getScheduledPostById,
   createScheduledPost,
   deleteScheduledPost,
+  rescheduleScheduledPost,
   getIdleMembers,
   getKV,
   setKV,
@@ -243,6 +244,19 @@ function start(sock, cfg) {
     const existing = getScheduledPostById(req.params.id);
     deleteScheduledPost(req.params.id);
     if (existing && existing.status === 'pending') removeUploadedFile(existing.image_path);
+    res.json({ ok: true });
+  });
+
+  app.post('/api/scheduled-posts/:id/reschedule', (req, res) => {
+    const existing = getScheduledPostById(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'not found' });
+
+    const { runAt } = req.body;
+    if (!runAt) return res.status(400).json({ error: 'runAt is required' });
+    const runAtMs = new Date(runAt).getTime();
+    if (Number.isNaN(runAtMs)) return res.status(400).json({ error: 'runAt is not a valid date/time' });
+
+    rescheduleScheduledPost(req.params.id, runAtMs);
     res.json({ ok: true });
   });
 
