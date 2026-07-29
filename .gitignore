@@ -5,3 +5,4 @@ data/agent.sqlite-*
 .env
 *.log
 .deploy_key/
+data/birthdays.csv
