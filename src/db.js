@@ -50,6 +50,8 @@ db.exec(`
     type TEXT NOT NULL DEFAULT 'message',
     text TEXT,
     image_path TEXT,
+    mention_all INTEGER NOT NULL DEFAULT 0,
+    mention_phones TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     created_at INTEGER NOT NULL,
     sent_at INTEGER,
@@ -57,12 +59,19 @@ db.exec(`
   );
 `);
 
-// Migration: older databases were created before scheduled_posts could
-// represent anything other than a message post — add the `type` column
-// if it's missing so existing installs don't need to delete their DB.
+// Migrations: older databases were created before scheduled_posts could
+// represent anything other than a plain message post — add columns
+// that were introduced later so existing installs don't need to
+// delete their DB.
 const scheduledPostsColumns = db.prepare("PRAGMA table_info(scheduled_posts)").all().map((c) => c.name);
 if (!scheduledPostsColumns.includes('type')) {
   db.exec("ALTER TABLE scheduled_posts ADD COLUMN type TEXT NOT NULL DEFAULT 'message'");
+}
+if (!scheduledPostsColumns.includes('mention_all')) {
+  db.exec('ALTER TABLE scheduled_posts ADD COLUMN mention_all INTEGER NOT NULL DEFAULT 0');
+}
+if (!scheduledPostsColumns.includes('mention_phones')) {
+  db.exec('ALTER TABLE scheduled_posts ADD COLUMN mention_phones TEXT');
 }
 
 // ---- Member / idle tracking (unchanged) ----
@@ -222,12 +231,21 @@ function getScheduledPostById(id) {
   return db.prepare('SELECT * FROM scheduled_posts WHERE id = ?').get(id);
 }
 
-function createScheduledPost({ runAt, type = 'message', text = null, imagePath = null }) {
+function createScheduledPost({
+  runAt,
+  type = 'message',
+  text = null,
+  imagePath = null,
+  mentionAll = false,
+  mentionPhones = null,
+}) {
   const info = db
     .prepare(
-      'INSERT INTO scheduled_posts (run_at, type, text, image_path, status, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+      `INSERT INTO scheduled_posts
+        (run_at, type, text, image_path, mention_all, mention_phones, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run(runAt, type, text, imagePath, 'pending', Date.now());
+    .run(runAt, type, text, imagePath, mentionAll ? 1 : 0, mentionPhones, 'pending', Date.now());
   return info.lastInsertRowid;
 }
 

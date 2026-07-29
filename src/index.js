@@ -22,34 +22,40 @@ async function main() {
     );
   }
 
-  const sock = await connect(cfg.botPhoneNumber);
-  console.log('[startup] Connected. Bot is live.');
-
   // Log any group JID we see traffic from, to help first-time setup.
   const seenGroupJids = new Set();
 
-  sock.ev.on('messages.upsert', ({ messages, type }) => {
-    if (type !== 'notify') return;
-    for (const msg of messages) {
-      const remoteJid = msg.key.remoteJid;
-      if (!remoteJid || !remoteJid.endsWith('@g.us')) continue;
+  // These listeners need to be re-attached to every socket connect()
+  // creates internally (including reconnects) — a listener attached to
+  // one socket's `.ev` emitter goes dead once that socket is replaced,
+  // so this callback runs again each time a fresh one comes online.
+  const sock = await connect(cfg.botPhoneNumber, {
+    onSocketCreated: (freshSock) => {
+      freshSock.ev.on('messages.upsert', ({ messages, type }) => {
+        if (type !== 'notify') return;
+        for (const msg of messages) {
+          const remoteJid = msg.key.remoteJid;
+          if (!remoteJid || !remoteJid.endsWith('@g.us')) continue;
 
-      if (!seenGroupJids.has(remoteJid)) {
-        seenGroupJids.add(remoteJid);
-        console.log(`[startup] Discovered group JID: ${remoteJid}`);
-      }
+          if (!seenGroupJids.has(remoteJid)) {
+            seenGroupJids.add(remoteJid);
+            console.log(`[startup] Discovered group JID: ${remoteJid}`);
+          }
 
-      if (msg.key.fromMe) continue;
-      const senderJid = msg.key.participant || remoteJid;
-      const pushName = msg.pushName;
-      upsertMemberSeen(senderJid, pushName, (msg.messageTimestamp || Date.now() / 1000) * 1000);
-    }
+          if (msg.key.fromMe) continue;
+          const senderJid = msg.key.participant || remoteJid;
+          const pushName = msg.pushName;
+          upsertMemberSeen(senderJid, pushName, (msg.messageTimestamp || Date.now() / 1000) * 1000);
+        }
+      });
+
+      freshSock.ev.on('group-participants.update', async (update) => {
+        if (update.id !== cfg.groupJid) return;
+        console.log(`[group] ${update.action}:`, update.participants.join(', '));
+      });
+    },
   });
-
-  sock.ev.on('group-participants.update', async (update) => {
-    if (update.id !== cfg.groupJid) return;
-    console.log(`[group] ${update.action}:`, update.participants.join(', '));
-  });
+  console.log('[startup] Connected. Bot is live.');
 
   if (cfg.groupJid) {
     try {

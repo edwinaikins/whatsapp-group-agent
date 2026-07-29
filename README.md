@@ -210,7 +210,10 @@ From there you can:
   local timezone) and choose to post a message (optionally with an
   image), rename the group, or change its icon at that moment; a
   background check runs every minute. Pending actions can be cancelled
-  before they fire.
+  before they fire. Message posts can also tag everyone currently in
+  the group, or specific people by phone number — WhatsApp requires
+  the message text to actually contain each tagged person's number for
+  the tag to render, so the dashboard appends those automatically.
 - **Title rotation** — add/remove/reorder the titles the bot cycles
   through on its schedule.
 - **Daily activity prompts** — add/remove/reorder prompts, optionally
@@ -232,6 +235,29 @@ used them is gone.
   and restart the `whatsapp-group-agent` container/process.
 - If the bot ever gets logged out (e.g. you unlink it from the phone),
   delete the `auth_state/` folder and repeat step 2.
+
+### What happens when the connection drops
+
+Three different things can go wrong, and only one of them needs you:
+
+- **A brief WhatsApp-level disconnect** (network blip, "connection
+  replaced", the periodic restart WhatsApp forces every so often) —
+  the bot detects this and reconnects on its own within a few seconds,
+  using the saved session in `auth_state/`. Nothing to do.
+- **The container/process crashes, or the VPS reboots** — Docker's
+  `restart: unless-stopped` policy brings it back up automatically; it
+  reconnects using `auth_state/` the same as above. The dashboard is
+  unreachable for the few seconds the container takes to come back,
+  then works again on its own — there's no dashboard-side "restart"
+  button, since the dashboard is served by the same process that would
+  need restarting.
+- **The bot gets logged out** (you unlink it from the phone, or
+  WhatsApp forces a logout) — this is the one case that needs you.
+  `auth_state/` is no longer valid, so it can't reconnect on its own no
+  matter how many times Docker restarts it. Delete `auth_state/` and
+  repeat step 2 (the interactive pairing-code flow) — WhatsApp's
+  pairing step has to happen in an interactive terminal, so this can't
+  be done from the dashboard.
 
 ## Project layout
 

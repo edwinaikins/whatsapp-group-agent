@@ -129,6 +129,13 @@
     <div class="row" id="action-image-row">
       <input type="file" id="post-image" accept="image/*" />
     </div>
+    <div class="row" id="action-mention-row">
+      <label style="display:flex; align-items:center; gap:6px;">
+        <input type="checkbox" id="mention-all" onchange="onMentionAllChange()" />
+        Tag everyone in the group
+      </label>
+      <input type="text" id="mention-phones" placeholder="Or tag specific people: comma-separated phone numbers" style="flex:1; min-width:280px;" />
+    </div>
     <div class="row">
       <button onclick="scheduleAction()">Schedule</button>
     </div>
@@ -343,21 +350,32 @@ function onActionTypeChange() {
   const type = document.getElementById('action-type').value;
   const textRow = document.getElementById('action-text-row');
   const imageRow = document.getElementById('action-image-row');
+  const mentionRow = document.getElementById('action-mention-row');
   const textArea = document.getElementById('post-text');
 
   if (type === 'rename') {
     textRow.style.display = '';
     imageRow.style.display = 'none';
+    mentionRow.style.display = 'none';
     textArea.placeholder = 'New group name';
   } else if (type === 'icon') {
     textRow.style.display = 'none';
     imageRow.style.display = '';
+    mentionRow.style.display = 'none';
     textArea.value = '';
   } else {
     textRow.style.display = '';
     imageRow.style.display = '';
+    mentionRow.style.display = '';
     textArea.placeholder = 'Message text (optional if an image is attached)';
   }
+}
+
+function onMentionAllChange() {
+  const checked = document.getElementById('mention-all').checked;
+  const phonesInput = document.getElementById('mention-phones');
+  phonesInput.disabled = checked;
+  if (checked) phonesInput.value = '';
 }
 
 async function loadPosts() {
@@ -371,7 +389,10 @@ async function loadPosts() {
     } else if (type === 'icon') {
       details = r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : '<span class="muted">none</span>';
     } else {
-      details = `${escapeHtml(r.text || '')} ${r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : ''}`;
+      const tag = r.mention_all
+        ? ' <span class="muted">(tags everyone)</span>'
+        : (r.mention_phones ? ' <span class="muted">(tags specific people)</span>' : '');
+      details = `${escapeHtml(r.text || '')} ${r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : ''}${tag}`;
     }
     return `
     <tr>
@@ -388,18 +409,27 @@ async function scheduleAction() {
   const when = document.getElementById('post-when').value;
   const text = document.getElementById('post-text').value.trim();
   const file = document.getElementById('post-image').files[0];
+  const mentionAll = document.getElementById('mention-all').checked;
+  const mentionPhones = document.getElementById('mention-phones').value.trim();
   if (!when) return toast('Pick a date/time', true);
   if (type === 'rename' && !text) return toast('Enter the new group name', true);
   if (type === 'icon' && !file) return toast('Choose an image first', true);
-  if (type === 'message' && !text && !file) return toast('Add text or an image', true);
+  if (type === 'message' && !text && !file && !mentionAll && !mentionPhones) {
+    return toast('Add text, an image, or someone to tag', true);
+  }
   const fd = new FormData();
   fd.append('runAt', new Date(when).toISOString());
   fd.append('type', type);
   if (text) fd.append('text', text);
   if (file) fd.append('image', file);
+  if (type === 'message' && mentionAll) fd.append('mentionAll', 'true');
+  if (type === 'message' && !mentionAll && mentionPhones) fd.append('mentionPhones', mentionPhones);
   await api('/api/scheduled-posts', { method: 'POST', body: fd });
   document.getElementById('post-text').value = '';
   document.getElementById('post-image').value = '';
+  document.getElementById('mention-all').checked = false;
+  document.getElementById('mention-phones').value = '';
+  document.getElementById('mention-phones').disabled = false;
   loadPosts();
 }
 async function deletePost(id) {

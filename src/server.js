@@ -193,6 +193,8 @@ function start(sock, cfg) {
   app.post('/api/scheduled-posts', upload.single('image'), (req, res) => {
     const { runAt, text } = req.body;
     const type = ['message', 'rename', 'icon'].includes(req.body.type) ? req.body.type : 'message';
+    const mentionAll = type === 'message' && ['true', 'on', '1'].includes(req.body.mentionAll);
+    const mentionPhones = type === 'message' && req.body.mentionPhones ? req.body.mentionPhones.trim() : null;
 
     if (!runAt) return res.status(400).json({ error: 'runAt is required' });
     const runAtMs = new Date(runAt).getTime();
@@ -204,8 +206,8 @@ function start(sock, cfg) {
     if (type === 'icon' && !req.file) {
       return res.status(400).json({ error: 'An image is required to schedule an icon change' });
     }
-    if (type === 'message' && !text && !req.file) {
-      return res.status(400).json({ error: 'Add text or an image' });
+    if (type === 'message' && !text && !req.file && !mentionAll && !mentionPhones) {
+      return res.status(400).json({ error: 'Add text, an image, or someone to tag' });
     }
 
     const id = createScheduledPost({
@@ -213,6 +215,8 @@ function start(sock, cfg) {
       type,
       text: text || null,
       imagePath: req.file ? req.file.filename : null,
+      mentionAll,
+      mentionPhones,
     });
     res.json({ id });
   });

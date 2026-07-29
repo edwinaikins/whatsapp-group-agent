@@ -5,6 +5,29 @@ const { getDuePosts, markPostSent, markPostFailed } = require('../db');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
 
+// WhatsApp only renders an @-mention as a tappable tag (and notifies that
+// person) if the message text actually contains "@<their number>" — the
+// `mentions` array alone isn't enough. So for a tagged post we build both
+// the mentions array Baileys needs AND a line of "@number" text to match
+// it, the same pattern idleReport.js already uses for its idle list.
+async function buildMentions(post, sock, groupJid) {
+  let jids;
+
+  if (post.mention_all) {
+    const metadata = await sock.groupMetadata(groupJid);
+    jids = metadata.participants.map((p) => p.id);
+  } else if (post.mention_phones) {
+    jids = post.mention_phones
+      .split(',')
+      .map((p) => p.replace(/\D/g, ''))
+      .filter(Boolean)
+      .map((p) => `${p}@s.whatsapp.net`);
+  }
+
+  if (!jids || !jids.length) return { mentions: undefined, tagLine: '' };
+  return { mentions: jids, tagLine: jids.map((j) => `@${j.split('@')[0]}`).join(' ') };
+}
+
 function register(sock, cfg) {
   const { groupJid, timezone } = cfg;
 
@@ -23,13 +46,19 @@ function register(sock, cfg) {
             throw new Error('No icon image was saved for this scheduled change');
           }
           await sock.updateProfilePicture(groupJid, fs.readFileSync(imageFile));
-        } else if (imageFile && fs.existsSync(imageFile)) {
-          await sock.sendMessage(groupJid, {
-            image: fs.readFileSync(imageFile),
-            caption: post.text || undefined,
-          });
         } else {
-          await sock.sendMessage(groupJid, { text: post.text || '' });
+          const { mentions, tagLine } = await buildMentions(post, sock, groupJid);
+          const text = tagLine ? `${post.text || ''}\n\n${tagLine}`.trim() : post.text || '';
+
+          if (imageFile && fs.existsSync(imageFile)) {
+            await sock.sendMessage(groupJid, {
+              image: fs.readFileSync(imageFile),
+              caption: text || undefined,
+              mentions,
+            });
+          } else {
+            await sock.sendMessage(groupJid, { text, mentions });
+          }
         }
 
         markPostSent(post.id);
