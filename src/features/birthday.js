@@ -1,9 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
-const { getTodaysBirthdays } = require('../db');
+const { getTodaysBirthdays, getKV } = require('../db');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
+
+// The template lives in the kv store once someone edits it from the
+// dashboard; config.json's birthdays.messageTemplate is only the
+// fallback default for installs that never touch the dashboard field.
+const TEMPLATE_KV_KEY = 'birthday_message_template';
 
 function register(sock, cfg) {
   const { birthdays, groupJid, timezone } = cfg;
@@ -17,11 +22,13 @@ function register(sock, cfg) {
         return;
       }
 
+      const template = getKV(TEMPLATE_KV_KEY, birthdays.messageTemplate);
+
       for (const rec of todays) {
         const name = rec.name || 'friend';
         const phone = String(rec.phone || '').replace(/\D/g, '');
         const jid = phone ? `${phone}@s.whatsapp.net` : undefined;
-        const text = birthdays.messageTemplate.replace('{name}', name);
+        const text = template.replace('{name}', name);
         const mentions = jid ? [jid] : undefined;
 
         const photoFile = rec.photo_path ? path.join(UPLOADS_DIR, rec.photo_path) : null;

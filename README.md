@@ -219,7 +219,9 @@ From there you can:
 - **Daily activity prompts** — add/remove/reorder prompts, optionally
   with an image attached to each.
 - **Birthdays** — add/remove entries (name, phone, month, day, optional
-  photo) for the daily birthday check.
+  photo) for the daily birthday check, and edit the message itself
+  (use `{name}` where the person's name should go). Editing it here
+  overrides the `messageTemplate` default in `config.json`.
 
 Uploaded images are stored under `data/uploads/` on the VPS (persisted
 across rebuilds) and are deleted automatically once the row/action that

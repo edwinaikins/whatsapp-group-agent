@@ -177,6 +177,13 @@
   <section class="panel">
     <h2>Birthdays</h2>
     <div class="row">
+      <textarea id="bday-template" placeholder="Birthday message — use {name} where the person's name should go" style="width:100%;"></textarea>
+    </div>
+    <div class="row">
+      <button onclick="saveBdayTemplate()">Save message</button>
+      <span class="muted">Sent once a day to anyone whose birthday matches today.</span>
+    </div>
+    <div class="row">
       <input type="text" id="bday-name" placeholder="Name" />
       <input type="tel" id="bday-phone" placeholder="Phone (digits, e.g. 233241234567)" />
       <input type="number" id="bday-month" placeholder="Month (1-12)" style="width:110px;" />
@@ -306,6 +313,20 @@ async function deletePrompt(id) {
 }
 
 // ---- Birthdays ----
+async function loadBdayTemplate() {
+  const { template } = await api('/api/settings/birthday-template');
+  document.getElementById('bday-template').value = template;
+}
+async function saveBdayTemplate() {
+  const template = document.getElementById('bday-template').value.trim();
+  if (!template) return toast('Enter a message first', true);
+  await api('/api/settings/birthday-template', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template }),
+  });
+  toast(template.includes('{name}') ? 'Birthday message saved' : 'Saved — note: without {name}, the person\'s name won\'t appear');
+}
 async function loadBirthdays() {
   const rows = await api('/api/birthdays');
   const tbody = document.querySelector('#birthdays-table tbody');
@@ -445,6 +466,7 @@ function refreshAll() {
   refreshStatus();
   loadTitles();
   loadPrompts();
+  loadBdayTemplate();
   loadBirthdays();
   loadPosts();
 }
