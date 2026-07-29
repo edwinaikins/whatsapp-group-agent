@@ -2,8 +2,9 @@ node_modules/
 auth_state/
 data/agent.sqlite
 data/agent.sqlite-*
+data/uploads/
 .env
 *.log
 .deploy_key/
-data/birthdays.csv
-data/airtable-cache/
+data/birthdays.csv.example
+src/airtable.js

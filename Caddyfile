@@ -1,0 +1,3 @@
+{$DOMAIN} {
+	reverse_proxy whatsapp-group-agent:3000
+}

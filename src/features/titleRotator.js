@@ -1,6 +1,5 @@
 const cron = require('node-cron');
-const { getKV, setKV } = require('../db');
-const { getTable } = require('../airtable');
+const { getKV, setKV, listTitles } = require('../db');
 
 function register(sock, cfg) {
   const { titleRotation, groupJid, timezone } = cfg;
@@ -8,10 +7,9 @@ function register(sock, cfg) {
 
   const run = async () => {
     try {
-      const records = await getTable('Titles', { sortField: 'Order' });
-      const titles = records.map((r) => r.fields.Title).filter(Boolean);
+      const titles = listTitles().map((r) => r.text).filter(Boolean);
       if (!titles.length) {
-        console.warn('[titleRotator] No titles found in Airtable (or cache); skipping this run.');
+        console.warn('[titleRotator] No titles configured in the dashboard; skipping this run.');
         return;
       }
 

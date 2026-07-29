@@ -1,10 +1,12 @@
 const { loadConfig } = require('./config');
 const { connect } = require('./whatsapp');
 const { upsertMemberSeen } = require('./db');
+const server = require('./server');
 const titleRotator = require('./features/titleRotator');
 const dailyActivity = require('./features/dailyActivity');
 const idleReport = require('./features/idleReport');
 const birthday = require('./features/birthday');
+const scheduledPosts = require('./features/scheduledPosts');
 
 async function main() {
   const cfg = loadConfig();
@@ -62,8 +64,11 @@ async function main() {
   dailyActivity.register(sock, cfg);
   idleReport.register(sock, cfg);
   birthday.register(sock, cfg);
+  scheduledPosts.register(sock, cfg);
 
   console.log('[startup] All scheduled features registered. Waiting for cron ticks...');
+
+  server.start(sock, cfg);
 }
 
 main().catch((err) => {

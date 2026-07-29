@@ -2,12 +2,12 @@
   "titleRotation": {
     "enabled": true,
     "cron": "0 6 * * 1",
-    "comment": "Default: every Monday at 6am. Titles now come from the Titles table in Airtable, sorted by the Order field."
+    "comment": "Default: every Monday at 6am. Titles are managed from the dashboard's Title Rotation panel, in rotation order."
   },
   "dailyActivity": {
     "enabled": true,
     "cron": "0 9 * * *",
-    "comment": "Default: every day at 9am. Prompts now come from the ActivityPrompts table in Airtable (Prompt + optional Image), sorted by the Order field."
+    "comment": "Default: every day at 9am. Prompts (with optional images) are managed from the dashboard's Daily Activity Prompts panel."
   },
   "idleReport": {
     "enabled": true,
@@ -19,7 +19,7 @@
   "birthdays": {
     "enabled": true,
     "cron": "0 7 * * *",
-    "comment": "Default: checked every day at 7am. The list now comes from the Birthdays table in Airtable (Name, Phone, Month, Day, optional Photo).",
+    "comment": "Default: checked every day at 7am. The list (with optional photos) is managed from the dashboard's Birthdays panel.",
     "messageTemplate": "🎉🎂 Happy Birthday, {name}! Wishing you an amazing year ahead. 🥳🎈"
   }
 }

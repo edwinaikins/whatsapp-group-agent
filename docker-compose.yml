@@ -12,3 +12,24 @@ services:
     # After that, `docker compose up -d` runs it in the background.
     stdin_open: true
     tty: true
+    # Not published to the host on purpose — only reachable through the
+    # Caddy reverse proxy below, which terminates HTTPS.
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: whatsapp-group-agent-caddy
+    restart: unless-stopped
+    depends_on:
+      - whatsapp-group-agent
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

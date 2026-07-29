@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>WhatsApp Group Agent — Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-border: #262b36;
+    --text: #e6e8ec;
+    --muted: #9aa2b1;
+    --accent: #4f7cff;
+    --accent-2: #22c55e;
+    --danger: #ef4444;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  #status-bar { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  #status-bar span.value { color: var(--text); font-weight: 600; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  .dot.ok { background: var(--accent-2); }
+  .dot.bad { background: var(--danger); }
+  main { max-width: 980px; margin: 0 auto; padding: 24px; display: grid; gap: 20px; }
+  section.panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+  }
+  section.panel h2 { font-size: 15px; margin: 0 0 14px; font-weight: 600; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  input[type=text], input[type=number], input[type=tel], input[type=datetime-local], textarea {
+    background: #10131a;
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  textarea { width: 100%; min-height: 60px; resize: vertical; }
+  input[type=file] { color: var(--muted); font-size: 12px; }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.secondary { background: transparent; border: 1px solid var(--panel-border); color: var(--text); }
+  button.danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+  button:hover { filter: brightness(1.1); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--panel-border); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  img.thumb { width: 36px; height: 36px; object-fit: cover; border-radius: 6px; }
+  .muted { color: var(--muted); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .pill.pending { background: rgba(79,124,255,.15); color: #7fa1ff; }
+  .pill.sent { background: rgba(34,197,94,.15); color: #4ade80; }
+  .pill.failed { background: rgba(239,68,68,.15); color: #f87171; }
+  #toast {
+    position: fixed; bottom: 20px; right: 20px; background: var(--panel);
+    border: 1px solid var(--panel-border); padding: 10px 16px; border-radius: 8px;
+    font-size: 13px; display: none; max-width: 320px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>WhatsApp Group Agent</h1>
+  <div id="status-bar">
+    <span><span id="status-dot" class="dot bad"></span><span id="status-text">checking…</span></span>
+    <span>Group: <span class="value" id="status-group">—</span></span>
+    <span>Members: <span class="value" id="status-members">—</span></span>
+    <span>Idle: <span class="value" id="status-idle">—</span></span>
+  </div>
+</header>
+
+<main>
+
+  <section class="panel">
+    <h2>Group settings</h2>
+    <div class="row">
+      <input type="text" id="group-name-input" placeholder="New group name" style="flex:1; min-width:200px;" />
+      <button onclick="updateGroupName()">Rename group</button>
+    </div>
+    <div class="row">
+      <input type="file" id="group-icon-input" accept="image/*" />
+      <button onclick="updateGroupIcon()">Change group icon</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Schedule a one-off post</h2>
+    <div class="row">
+      <input type="datetime-local" id="post-when" />
+      <input type="file" id="post-image" accept="image/*" />
+    </div>
+    <div class="row">
+      <textarea id="post-text" placeholder="Message text (optional if an image is attached)"></textarea>
+    </div>
+    <div class="row">
+      <button onclick="schedulePost()">Schedule post</button>
+    </div>
+    <table id="posts-table">
+      <thead><tr><th>When</th><th>Text</th><th>Image</th><th>Status</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Title rotation</h2>
+    <div class="row">
+      <input type="text" id="title-text" placeholder="Title text" style="flex:1; min-width:200px;" />
+      <input type="number" id="title-order" placeholder="Order" style="width:80px;" />
+      <button onclick="addTitle()">Add</button>
+    </div>
+    <table id="titles-table">
+      <thead><tr><th>Order</th><th>Title</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Daily activity prompts</h2>
+    <div class="row">
+      <textarea id="prompt-text" placeholder="Prompt text" style="flex:1; min-width:200px;"></textarea>
+    </div>
+    <div class="row">
+      <input type="number" id="prompt-order" placeholder="Order" style="width:80px;" />
+      <input type="file" id="prompt-image" accept="image/*" />
+      <button onclick="addPrompt()">Add</button>
+    </div>
+    <table id="prompts-table">
+      <thead><tr><th>Order</th><th>Prompt</th><th>Image</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>Birthdays</h2>
+    <div class="row">
+      <input type="text" id="bday-name" placeholder="Name" />
+      <input type="tel" id="bday-phone" placeholder="Phone (digits, e.g. 233241234567)" />
+      <input type="number" id="bday-month" placeholder="Month (1-12)" style="width:110px;" />
+      <input type="number" id="bday-day" placeholder="Day (1-31)" style="width:100px;" />
+    </div>
+    <div class="row">
+      <input type="file" id="bday-photo" accept="image/*" />
+      <button onclick="addBirthday()">Add</button>
+    </div>
+    <table id="birthdays-table">
+      <thead><tr><th>Name</th><th>Phone</th><th>Date</th><th>Photo</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+function toast(msg, isError) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.borderColor = isError ? 'var(--danger)' : 'var(--panel-border)';
+  el.style.display = 'block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = 'none'; }, 3500);
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  let body = null;
+  try { body = await res.json(); } catch {}
+  if (!res.ok) {
+    throw new Error((body && body.error) || `Request failed (${res.status})`);
+  }
+  return body;
+}
+
+async function refreshStatus() {
+  try {
+    const s = await api('/api/status');
+    document.getElementById('status-dot').className = 'dot ' + (s.connected ? 'ok' : 'bad');
+    document.getElementById('status-text').textContent = s.connected ? 'connected' : ('disconnected: ' + (s.error || ''));
+    document.getElementById('status-group').textContent = s.groupName || '—';
+    document.getElementById('status-members').textContent = s.memberCount ?? '—';
+    document.getElementById('status-idle').textContent = s.idleCount ?? '—';
+  } catch (err) {
+    document.getElementById('status-text').textContent = 'error: ' + err.message;
+  }
+}
+
+// ---- Group settings ----
+async function updateGroupName() {
+  const name = document.getElementById('group-name-input').value.trim();
+  if (!name) return toast('Enter a name first', true);
+  try {
+    await api('/api/group/name', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    toast('Group renamed');
+    refreshStatus();
+  } catch (err) { toast(err.message, true); }
+}
+
+async function updateGroupIcon() {
+  const file = document.getElementById('group-icon-input').files[0];
+  if (!file) return toast('Choose an image first', true);
+  const fd = new FormData();
+  fd.append('icon', file);
+  try {
+    await api('/api/group/icon', { method: 'POST', body: fd });
+    toast('Group icon updated');
+  } catch (err) { toast(err.message, true); }
+}
+
+// ---- Titles ----
+async function loadTitles() {
+  const rows = await api('/api/titles');
+  const tbody = document.querySelector('#titles-table tbody');
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.sort_order}</td>
+      <td>${escapeHtml(r.text)}</td>
+      <td><button class="danger" onclick="deleteTitle(${r.id})">Delete</button></td>
+    </tr>`).join('');
+}
+async function addTitle() {
+  const text = document.getElementById('title-text').value.trim();
+  const sortOrder = document.getElementById('title-order').value || 0;
+  if (!text) return toast('Enter title text', true);
+  await api('/api/titles', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, sortOrder }) });
+  document.getElementById('title-text').value = '';
+  loadTitles();
+}
+async function deleteTitle(id) {
+  await api('/api/titles/' + id, { method: 'DELETE' });
+  loadTitles();
+}
+
+// ---- Activity prompts ----
+async function loadPrompts() {
+  const rows = await api('/api/prompts');
+  const tbody = document.querySelector('#prompts-table tbody');
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${r.sort_order}</td>
+      <td>${escapeHtml(r.text)}</td>
+      <td>${r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : '<span class="muted">none</span>'}</td>
+      <td><button class="danger" onclick="deletePrompt(${r.id})">Delete</button></td>
+    </tr>`).join('');
+}
+async function addPrompt() {
+  const text = document.getElementById('prompt-text').value.trim();
+  const sortOrder = document.getElementById('prompt-order').value || 0;
+  const file = document.getElementById('prompt-image').files[0];
+  if (!text) return toast('Enter prompt text', true);
+  const fd = new FormData();
+  fd.append('text', text);
+  fd.append('sortOrder', sortOrder);
+  if (file) fd.append('image', file);
+  await api('/api/prompts', { method: 'POST', body: fd });
+  document.getElementById('prompt-text').value = '';
+  loadPrompts();
+}
+async function deletePrompt(id) {
+  await api('/api/prompts/' + id, { method: 'DELETE' });
+  loadPrompts();
+}
+
+// ---- Birthdays ----
+async function loadBirthdays() {
+  const rows = await api('/api/birthdays');
+  const tbody = document.querySelector('#birthdays-table tbody');
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${escapeHtml(r.name)}</td>
+      <td>${escapeHtml(r.phone)}</td>
+      <td>${r.month}/${r.day}</td>
+      <td>${r.photo_path ? `<img class="thumb" src="/uploads/${r.photo_path}" />` : '<span class="muted">none</span>'}</td>
+      <td><button class="danger" onclick="deleteBirthday(${r.id})">Delete</button></td>
+    </tr>`).join('');
+}
+async function addBirthday() {
+  const name = document.getElementById('bday-name').value.trim();
+  const phone = document.getElementById('bday-phone').value.trim().replace(/\D/g, '');
+  const month = document.getElementById('bday-month').value;
+  const day = document.getElementById('bday-day').value;
+  const file = document.getElementById('bday-photo').files[0];
+  if (!name || !phone || !month || !day) return toast('Fill in name, phone, month, and day', true);
+  const fd = new FormData();
+  fd.append('name', name);
+  fd.append('phone', phone);
+  fd.append('month', month);
+  fd.append('day', day);
+  if (file) fd.append('photo', file);
+  await api('/api/birthdays', { method: 'POST', body: fd });
+  document.getElementById('bday-name').value = '';
+  document.getElementById('bday-phone').value = '';
+  document.getElementById('bday-month').value = '';
+  document.getElementById('bday-day').value = '';
+  loadBirthdays();
+}
+async function deleteBirthday(id) {
+  await api('/api/birthdays/' + id, { method: 'DELETE' });
+  loadBirthdays();
+}
+
+// ---- Scheduled posts ----
+async function loadPosts() {
+  const rows = await api('/api/scheduled-posts');
+  const tbody = document.querySelector('#posts-table tbody');
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td>${new Date(r.run_at).toLocaleString()}</td>
+      <td>${escapeHtml(r.text || '')}</td>
+      <td>${r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : '<span class="muted">none</span>'}</td>
+      <td><span class="pill ${r.status}">${r.status}</span></td>
+      <td>${r.status === 'pending' ? `<button class="danger" onclick="deletePost(${r.id})">Cancel</button>` : ''}</td>
+    </tr>`).join('');
+}
+async function schedulePost() {
+  const when = document.getElementById('post-when').value;
+  const text = document.getElementById('post-text').value.trim();
+  const file = document.getElementById('post-image').files[0];
+  if (!when) return toast('Pick a date/time', true);
+  if (!text && !file) return toast('Add text or an image', true);
+  const fd = new FormData();
+  fd.append('runAt', new Date(when).toISOString());
+  if (text) fd.append('text', text);
+  if (file) fd.append('image', file);
+  await api('/api/scheduled-posts', { method: 'POST', body: fd });
+  document.getElementById('post-text').value = '';
+  loadPosts();
+}
+async function deletePost(id) {
+  await api('/api/scheduled-posts/' + id, { method: 'DELETE' });
+  loadPosts();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+function refreshAll() {
+  refreshStatus();
+  loadTitles();
+  loadPrompts();
+  loadBirthdays();
+  loadPosts();
+}
+refreshAll();
+setInterval(refreshStatus, 15000);
+</script>
+
+</body>
+</html>

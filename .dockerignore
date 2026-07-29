@@ -1,0 +1,6 @@
+.git
+node_modules
+data
+auth_state
+.deploy_key
+*.log

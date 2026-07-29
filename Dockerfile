@@ -21,7 +21,12 @@ RUN git config --global url."https://github.com/".insteadOf "ssh://git@github.co
 
 COPY . .
 
-# Persist WhatsApp login + the SQLite database across container restarts.
+# Persist WhatsApp login + the SQLite database/uploaded images across
+# container restarts.
 VOLUME ["/app/auth_state", "/app/data"]
+
+# Dashboard (Express). Not published to the host directly — see
+# docker-compose.yml, which fronts this with Caddy for HTTPS.
+EXPOSE 3000
 
 CMD ["node", "src/index.js"]

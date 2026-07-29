@@ -21,7 +21,42 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS titles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    sort_order INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS activity_prompts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    image_path TEXT,
+    sort_order INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS birthdays (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    month INTEGER NOT NULL,
+    day INTEGER NOT NULL,
+    photo_path TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS scheduled_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_at INTEGER NOT NULL,
+    text TEXT,
+    image_path TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at INTEGER NOT NULL,
+    sent_at INTEGER,
+    error TEXT
+  );
 `);
+
+// ---- Member / idle tracking (unchanged) ----
 
 function upsertMemberSeen(jid, name, whenMs) {
   const existing = db.prepare('SELECT jid FROM members WHERE jid = ?').get(jid);
@@ -82,6 +117,130 @@ function setKV(key, value) {
   ).run(key, String(value));
 }
 
+// ---- Titles ----
+
+function listTitles() {
+  return db.prepare('SELECT * FROM titles ORDER BY sort_order ASC, id ASC').all();
+}
+
+function createTitle({ text, sortOrder = 0 }) {
+  const info = db.prepare('INSERT INTO titles (text, sort_order) VALUES (?, ?)').run(text, sortOrder);
+  return info.lastInsertRowid;
+}
+
+function updateTitle(id, { text, sortOrder }) {
+  db.prepare('UPDATE titles SET text = COALESCE(?, text), sort_order = COALESCE(?, sort_order) WHERE id = ?')
+    .run(text ?? null, sortOrder ?? null, id);
+}
+
+function deleteTitle(id) {
+  db.prepare('DELETE FROM titles WHERE id = ?').run(id);
+}
+
+// ---- Activity prompts ----
+
+function listPrompts() {
+  return db.prepare('SELECT * FROM activity_prompts ORDER BY sort_order ASC, id ASC').all();
+}
+
+function getPromptById(id) {
+  return db.prepare('SELECT * FROM activity_prompts WHERE id = ?').get(id);
+}
+
+function createPrompt({ text, imagePath = null, sortOrder = 0 }) {
+  const info = db
+    .prepare('INSERT INTO activity_prompts (text, image_path, sort_order) VALUES (?, ?, ?)')
+    .run(text, imagePath, sortOrder);
+  return info.lastInsertRowid;
+}
+
+function updatePrompt(id, { text, imagePath, sortOrder }) {
+  db.prepare(
+    'UPDATE activity_prompts SET text = COALESCE(?, text), image_path = COALESCE(?, image_path), sort_order = COALESCE(?, sort_order) WHERE id = ?'
+  ).run(text ?? null, imagePath ?? null, sortOrder ?? null, id);
+}
+
+function deletePrompt(id) {
+  db.prepare('DELETE FROM activity_prompts WHERE id = ?').run(id);
+}
+
+// ---- Birthdays ----
+
+function listBirthdays() {
+  return db.prepare('SELECT * FROM birthdays ORDER BY month ASC, day ASC, id ASC').all();
+}
+
+function getBirthdayById(id) {
+  return db.prepare('SELECT * FROM birthdays WHERE id = ?').get(id);
+}
+
+function createBirthday({ name, phone, month, day, photoPath = null }) {
+  const info = db
+    .prepare('INSERT INTO birthdays (name, phone, month, day, photo_path) VALUES (?, ?, ?, ?, ?)')
+    .run(name, phone, month, day, photoPath);
+  return info.lastInsertRowid;
+}
+
+function updateBirthday(id, { name, phone, month, day, photoPath }) {
+  db.prepare(
+    `UPDATE birthdays SET
+      name = COALESCE(?, name),
+      phone = COALESCE(?, phone),
+      month = COALESCE(?, month),
+      day = COALESCE(?, day),
+      photo_path = COALESCE(?, photo_path)
+     WHERE id = ?`
+  ).run(name ?? null, phone ?? null, month ?? null, day ?? null, photoPath ?? null, id);
+}
+
+function deleteBirthday(id) {
+  db.prepare('DELETE FROM birthdays WHERE id = ?').run(id);
+}
+
+function getTodaysBirthdays(now = new Date()) {
+  return db
+    .prepare('SELECT * FROM birthdays WHERE month = ? AND day = ?')
+    .all(now.getMonth() + 1, now.getDate());
+}
+
+// ---- Scheduled (one-off) posts ----
+
+function listScheduledPosts() {
+  return db.prepare('SELECT * FROM scheduled_posts ORDER BY run_at ASC').all();
+}
+
+function getScheduledPostById(id) {
+  return db.prepare('SELECT * FROM scheduled_posts WHERE id = ?').get(id);
+}
+
+function createScheduledPost({ runAt, text = null, imagePath = null }) {
+  const info = db
+    .prepare(
+      'INSERT INTO scheduled_posts (run_at, text, image_path, status, created_at) VALUES (?, ?, ?, ?, ?)'
+    )
+    .run(runAt, text, imagePath, 'pending', Date.now());
+  return info.lastInsertRowid;
+}
+
+function deleteScheduledPost(id) {
+  db.prepare("DELETE FROM scheduled_posts WHERE id = ? AND status = 'pending'").run(id);
+}
+
+function getDuePosts(nowMs) {
+  return db
+    .prepare("SELECT * FROM scheduled_posts WHERE status = 'pending' AND run_at <= ? ORDER BY run_at ASC")
+    .all(nowMs);
+}
+
+function markPostSent(id) {
+  db.prepare("UPDATE scheduled_posts SET status = 'sent', sent_at = ? WHERE id = ?").run(Date.now(), id);
+}
+
+function markPostFailed(id, errorMessage) {
+  db.prepare("UPDATE scheduled_posts SET status = 'failed', error = ?, sent_at = ? WHERE id = ?")
+    .run(errorMessage, Date.now(), id);
+}
+
 module.exports = {
   db,
   upsertMemberSeen,
@@ -89,4 +248,26 @@ module.exports = {
   getIdleMembers,
   getKV,
   setKV,
+  listTitles,
+  createTitle,
+  updateTitle,
+  deleteTitle,
+  listPrompts,
+  getPromptById,
+  createPrompt,
+  updatePrompt,
+  deletePrompt,
+  listBirthdays,
+  getBirthdayById,
+  createBirthday,
+  updateBirthday,
+  deleteBirthday,
+  getTodaysBirthdays,
+  listScheduledPosts,
+  getScheduledPostById,
+  createScheduledPost,
+  deleteScheduledPost,
+  getDuePosts,
+  markPostSent,
+  markPostFailed,
 };

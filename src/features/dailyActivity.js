@@ -1,6 +1,9 @@
+const fs = require('fs');
+const path = require('path');
 const cron = require('node-cron');
-const { getKV, setKV } = require('../db');
-const { getTable } = require('../airtable');
+const { getKV, setKV, listPrompts } = require('../db');
+
+const UPLOADS_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
 
 function register(sock, cfg) {
   const { dailyActivity, groupJid, timezone } = cfg;
@@ -8,19 +11,9 @@ function register(sock, cfg) {
 
   const run = async () => {
     try {
-      const records = await getTable('ActivityPrompts', { sortField: 'Order' });
-      const prompts = records
-        .map((r) => ({
-          text: r.fields.Prompt,
-          // Airtable attachment URLs are pre-signed and expire after a
-          // couple of hours, which is fine here since we always fetch
-          // fresh right before sending rather than caching them for long.
-          imageUrl: Array.isArray(r.fields.Image) && r.fields.Image[0] ? r.fields.Image[0].url : undefined,
-        }))
-        .filter((p) => p.text);
-
+      const prompts = listPrompts().filter((p) => p.text);
       if (!prompts.length) {
-        console.warn('[dailyActivity] No prompts found in Airtable (or cache); skipping this run.');
+        console.warn('[dailyActivity] No prompts configured in the dashboard; skipping this run.');
         return;
       }
 
@@ -28,13 +21,14 @@ function register(sock, cfg) {
       const nextIdx = idx % prompts.length;
       const prompt = prompts[nextIdx];
 
-      if (prompt.imageUrl) {
-        await sock.sendMessage(groupJid, { image: { url: prompt.imageUrl }, caption: prompt.text });
+      const imageFile = prompt.image_path ? path.join(UPLOADS_DIR, prompt.image_path) : null;
+      if (imageFile && fs.existsSync(imageFile)) {
+        await sock.sendMessage(groupJid, { image: fs.readFileSync(imageFile), caption: prompt.text });
       } else {
         await sock.sendMessage(groupJid, { text: prompt.text });
       }
       setKV('activity_index', nextIdx);
-      console.log(`[dailyActivity] Posted: "${prompt.text}"${prompt.imageUrl ? ' (with image)' : ''}`);
+      console.log(`[dailyActivity] Posted: "${prompt.text}"${imageFile ? ' (with image)' : ''}`);
     } catch (err) {
       console.error('[dailyActivity] Failed to post activity:', err.message);
     }
