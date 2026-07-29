@@ -2,9 +2,12 @@ FROM node:22-bookworm-slim
 
 # python3/make/g++ are needed to compile better-sqlite3's native addon.
 # git is needed because some Baileys dependencies are installed straight
-# from GitHub rather than the npm registry.
+# from GitHub rather than the npm registry. ca-certificates is needed so
+# git/curl can actually verify github.com's TLS certificate — this slim
+# base image ships with no CA bundle at all.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ git \
+    python3 make g++ git ca-certificates \
+    && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
