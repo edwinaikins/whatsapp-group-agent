@@ -26,13 +26,18 @@ const {
   deleteScheduledPost,
   rescheduleScheduledPost,
   getIdleMembers,
+  getMemberByJid,
   getKV,
   setKV,
 } = require('./db');
 const titleRotator = require('./features/titleRotator');
 const dailyActivity = require('./features/dailyActivity');
+const idleReport = require('./features/idleReport');
 
 const BIRTHDAY_TEMPLATE_KV_KEY = 'birthday_message_template';
+const IDLE_MESSAGE_KV_KEY = 'idle_nudge_message_template';
+const DEFAULT_IDLE_MESSAGE =
+  "Hey {name} 👋 haven't seen you in the group in a while — just checking in, everything okay?";
 
 // Only understands the simple "M H * * D" shape the dashboard's day/time
 // pickers produce. A cron expression hand-edited in config.json into
@@ -47,6 +52,26 @@ function parseSimpleCron(cronExpr) {
     hour: Number(m[2]),
     dayOfWeek: m[3] === '*' ? '*' : Number(m[3]),
   };
+}
+
+// Shared validation for the two "day of week + time" schedule endpoints
+// (title rotation, idle report). Daily activity only needs hour/minute
+// since it always runs every day, so it validates that inline.
+function parseHourMinuteDayOfWeek(body) {
+  const hour = Number(body.hour);
+  const minute = Number(body.minute);
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) return { error: 'hour must be 0-23' };
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) return { error: 'minute must be 0-59' };
+  let dayOfWeek = body.dayOfWeek;
+  if (dayOfWeek === undefined || dayOfWeek === null || dayOfWeek === '' || dayOfWeek === '*') {
+    dayOfWeek = '*';
+  } else {
+    dayOfWeek = Number(dayOfWeek);
+    if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
+      return { error: 'dayOfWeek must be 0-6 (Sun-Sat) or omitted for every day' };
+    }
+  }
+  return { hour, minute, dayOfWeek };
 }
 
 const UPLOADS_DIR = path.join(__dirname, '..', 'data', 'uploads');
@@ -230,8 +255,10 @@ function start(sock, cfg) {
   app.get('/api/settings/schedules', (req, res) => {
     const titleCron = getKV(titleRotator.CRON_KV_KEY, cfg.titleRotation.cron);
     const activityCron = getKV(dailyActivity.CRON_KV_KEY, cfg.dailyActivity.cron);
+    const idleCron = getKV(idleReport.CRON_KV_KEY, cfg.idleReport.cron);
     const titleParsed = parseSimpleCron(titleCron);
     const activityParsed = parseSimpleCron(activityCron);
+    const idleParsed = parseSimpleCron(idleCron);
 
     res.json({
       titleRotation: {
@@ -246,29 +273,20 @@ function start(sock, cfg) {
         custom: !activityParsed,
         ...(activityParsed || {}),
       },
+      idleReport: {
+        cron: idleCron,
+        enabled: cfg.idleReport.enabled,
+        custom: !idleParsed,
+        ...(idleParsed || {}),
+      },
     });
   });
 
   app.post('/api/settings/schedules/title-rotation', (req, res) => {
-    const hour = Number(req.body.hour);
-    const minute = Number(req.body.minute);
-    if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
-      return res.status(400).json({ error: 'hour must be 0-23' });
-    }
-    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
-      return res.status(400).json({ error: 'minute must be 0-59' });
-    }
-    let dayOfWeek = req.body.dayOfWeek;
-    if (dayOfWeek === undefined || dayOfWeek === null || dayOfWeek === '' || dayOfWeek === '*') {
-      dayOfWeek = '*';
-    } else {
-      dayOfWeek = Number(dayOfWeek);
-      if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
-        return res.status(400).json({ error: 'dayOfWeek must be 0-6 (Sun-Sat) or omitted for every day' });
-      }
-    }
+    const parsed = parseHourMinuteDayOfWeek(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
 
-    const cronExpr = `${minute} ${hour} * * ${dayOfWeek}`;
+    const cronExpr = `${parsed.minute} ${parsed.hour} * * ${parsed.dayOfWeek}`;
     const applied = titleRotator.reschedule(cronExpr);
     if (!applied) {
       return res.status(400).json({ error: 'Title rotation is disabled (titleRotation.enabled is false in config.json)' });
@@ -292,6 +310,74 @@ function start(sock, cfg) {
       return res.status(400).json({ error: 'Daily activity posting is disabled (dailyActivity.enabled is false in config.json)' });
     }
     res.json({ ok: true, cron: cronExpr });
+  });
+
+  app.post('/api/settings/schedules/idle-report', (req, res) => {
+    const parsed = parseHourMinuteDayOfWeek(req.body);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+
+    const cronExpr = `${parsed.minute} ${parsed.hour} * * ${parsed.dayOfWeek}`;
+    const applied = idleReport.reschedule(cronExpr);
+    if (!applied) {
+      return res.status(400).json({ error: 'Idle reporting is disabled (idleReport.enabled is false in config.json)' });
+    }
+    res.json({ ok: true, cron: cronExpr });
+  });
+
+  // ---- Inactive members ----
+  // Refreshes membership from WhatsApp first so the list reflects who's
+  // actually still in the group (matches the same refresh the weekly
+  // idle report itself does), then returns everyone past the idle
+  // threshold with how many days they've been quiet.
+  app.get('/api/idle-members', async (req, res) => {
+    try {
+      await idleReport.refreshMembership(sock, cfg.groupJid);
+    } catch (err) {
+      console.error('[server] Failed to refresh membership before idle list:', err.message);
+    }
+    const now = Date.now();
+    const idle = getIdleMembers(cfg.idleReport.idleAfterDays).map((m) => ({
+      ...m,
+      daysIdle: m.last_seen_at ? Math.floor((now - m.last_seen_at) / (24 * 60 * 60 * 1000)) : null,
+    }));
+    res.json(idle);
+  });
+
+  app.get('/api/settings/idle-message', (req, res) => {
+    res.json({ template: getKV(IDLE_MESSAGE_KV_KEY, DEFAULT_IDLE_MESSAGE) });
+  });
+
+  app.post('/api/settings/idle-message', (req, res) => {
+    const { template } = req.body;
+    if (!template || !template.trim()) {
+      return res.status(400).json({ error: 'template is required' });
+    }
+    setKV(IDLE_MESSAGE_KV_KEY, template);
+    res.json({ ok: true });
+  });
+
+  // Sends a direct message to one idle member — either the text the
+  // admin typed for that person, or (if left blank) the saved default
+  // nudge template with {name} filled in. This is separate from the
+  // weekly group report, which still posts one combined tagged list.
+  app.post('/api/idle-members/:jid/message', async (req, res) => {
+    try {
+      const jid = req.params.jid;
+      const member = getMemberByJid(jid);
+      if (!member) return res.status(404).json({ error: 'member not found' });
+
+      const customText = req.body.text && req.body.text.trim();
+      let text = customText;
+      if (!text) {
+        const template = getKV(IDLE_MESSAGE_KV_KEY, DEFAULT_IDLE_MESSAGE);
+        text = template.replace('{name}', member.name || 'there');
+      }
+
+      await sock.sendMessage(jid, { text });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ---- Scheduled one-off posts ----

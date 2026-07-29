@@ -115,6 +115,10 @@ function syncMembershipList(participants) {
   }
 }
 
+function getMemberByJid(jid) {
+  return db.prepare('SELECT * FROM members WHERE jid = ?').get(jid);
+}
+
 function getIdleMembers(idleAfterDays) {
   const cutoff = Date.now() - idleAfterDays * 24 * 60 * 60 * 1000;
   return db
@@ -282,6 +286,7 @@ module.exports = {
   upsertMemberSeen,
   syncMembershipList,
   getIdleMembers,
+  getMemberByJid,
   getKV,
   setKV,
   listTitles,

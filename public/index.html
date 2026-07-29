@@ -209,6 +209,39 @@
   </section>
 
   <section class="panel">
+    <h2>Inactive members</h2>
+    <div class="row">
+      <label class="muted" style="min-width:40px;">Runs:</label>
+      <select id="idle-cron-dow">
+        <option value="*">Every day</option>
+        <option value="0">Sundays</option>
+        <option value="1">Mondays</option>
+        <option value="2">Tuesdays</option>
+        <option value="3">Wednesdays</option>
+        <option value="4">Thursdays</option>
+        <option value="5">Fridays</option>
+        <option value="6">Saturdays</option>
+      </select>
+      <input type="time" id="idle-cron-time" />
+      <button onclick="saveIdleCron()">Save schedule</button>
+      <span class="muted" id="idle-cron-note"></span>
+    </div>
+    <div class="row">
+      <textarea id="idle-message-template" placeholder="Default nudge message — use {name} where the person's name should go" style="width:100%;"></textarea>
+    </div>
+    <div class="row">
+      <button onclick="saveIdleMessageTemplate()">Save default message</button>
+      <span class="muted">Used by the "Send default" button below when you don't type a custom message.</span>
+    </div>
+    <div class="table-scroll">
+      <table id="idle-table">
+        <thead><tr><th>Name</th><th>Quiet for</th><th>Message</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
     <h2>Birthdays</h2>
     <div class="row">
       <textarea id="bday-template" placeholder="Birthday message — use {name} where the person's name should go" style="width:100%;"></textarea>
@@ -420,6 +453,15 @@ async function loadSchedules() {
     document.getElementById('activity-cron-time').value = `${pad2(s.dailyActivity.hour)}:${pad2(s.dailyActivity.minute)}`;
     activityNote.textContent = '';
   }
+
+  const idleNote = document.getElementById('idle-cron-note');
+  if (s.idleReport.custom) {
+    idleNote.textContent = `Custom schedule in config.json: "${s.idleReport.cron}"`;
+  } else {
+    document.getElementById('idle-cron-dow').value = String(s.idleReport.dayOfWeek);
+    document.getElementById('idle-cron-time').value = `${pad2(s.idleReport.hour)}:${pad2(s.idleReport.minute)}`;
+    idleNote.textContent = '';
+  }
 }
 
 async function saveTitleCron() {
@@ -450,6 +492,79 @@ async function saveActivityCron() {
     });
     document.getElementById('activity-cron-note').textContent = '';
     toast('Daily activity schedule saved');
+  } catch (err) { toast(err.message, true); }
+}
+
+async function saveIdleCron() {
+  const time = document.getElementById('idle-cron-time').value;
+  const dayOfWeek = document.getElementById('idle-cron-dow').value;
+  if (!time) return toast('Pick a time first', true);
+  const [hour, minute] = time.split(':').map(Number);
+  try {
+    await api('/api/settings/schedules/idle-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hour, minute, dayOfWeek }),
+    });
+    document.getElementById('idle-cron-note').textContent = '';
+    toast('Idle report schedule saved');
+  } catch (err) { toast(err.message, true); }
+}
+
+// ---- Inactive members ----
+async function loadIdleMessageTemplate() {
+  const { template } = await api('/api/settings/idle-message');
+  document.getElementById('idle-message-template').value = template;
+}
+async function saveIdleMessageTemplate() {
+  const template = document.getElementById('idle-message-template').value.trim();
+  if (!template) return toast('Enter a message first', true);
+  await api('/api/settings/idle-message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template }),
+  });
+  toast(template.includes('{name}') ? 'Default message saved' : 'Saved — note: without {name}, the person\'s name won\'t appear');
+}
+
+function buildIdleRow(m) {
+  const quiet = m.daysIdle === null ? 'no messages seen yet' : `${m.daysIdle} day(s)`;
+  return `
+  <tr>
+    <td>${escapeHtml(m.name || m.jid)}</td>
+    <td>${quiet}</td>
+    <td>
+      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+        <input type="text" placeholder="Custom message (optional)" style="flex:1; min-width:180px;" />
+        <button class="secondary" onclick="sendIdleMessage('${m.jid}', false, this)">Send custom</button>
+        <button onclick="sendIdleMessage('${m.jid}', true, this)">Send default</button>
+      </div>
+    </td>
+  </tr>`;
+}
+
+async function loadIdleMembers() {
+  const rows = await api('/api/idle-members');
+  const tbody = document.querySelector('#idle-table tbody');
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="3" class="muted">No one's idle right now 🎉</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map(buildIdleRow).join('');
+}
+
+async function sendIdleMessage(jid, useDefault, btn) {
+  const input = btn.closest('td').querySelector('input');
+  const text = useDefault ? '' : input.value.trim();
+  if (!useDefault && !text) return toast('Type a message first, or use "Send default"', true);
+  try {
+    await api('/api/idle-members/' + encodeURIComponent(jid) + '/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    toast('Message sent');
+    if (!useDefault) input.value = '';
   } catch (err) { toast(err.message, true); }
 }
 
@@ -617,6 +732,8 @@ function refreshAll() {
   loadSchedules();
   loadTitles();
   loadPrompts();
+  loadIdleMessageTemplate();
+  loadIdleMembers();
   loadBdayTemplate();
   loadBirthdays();
   loadPosts();

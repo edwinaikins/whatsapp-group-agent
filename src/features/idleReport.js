@@ -1,5 +1,20 @@
 const cron = require('node-cron');
-const { getIdleMembers, syncMembershipList } = require('../db');
+const { getIdleMembers, syncMembershipList, getKV, setKV } = require('../db');
+
+// Same pattern as titleRotator.js / dailyActivity.js — the cron
+// expression lives in the kv store once someone edits the schedule from
+// the dashboard, falling back to config.json's idleReport.cron.
+const CRON_KV_KEY = 'idle_report_cron';
+
+let currentTask = null;
+let boundTimezone = null;
+let boundRun = null;
+
+function applySchedule(cronExpr) {
+  if (currentTask) currentTask.stop();
+  currentTask = cron.schedule(cronExpr, boundRun, { timezone: boundTimezone });
+  console.log(`[idleReport] Scheduled with cron "${cronExpr}" (${boundTimezone})`);
+}
 
 async function refreshMembership(sock, groupJid) {
   const metadata = await sock.groupMetadata(groupJid);
@@ -28,7 +43,8 @@ function register(sock, cfg) {
   const { idleReport, groupJid, reportToJid, timezone } = cfg;
   if (!idleReport.enabled) return;
 
-  const run = async () => {
+  boundTimezone = timezone;
+  boundRun = async () => {
     try {
       await refreshMembership(sock, groupJid);
       const idleMembers = getIdleMembers(idleReport.idleAfterDays);
@@ -48,8 +64,17 @@ function register(sock, cfg) {
     }
   };
 
-  cron.schedule(idleReport.cron, run, { timezone });
-  console.log(`[idleReport] Scheduled with cron "${idleReport.cron}" (${timezone})`);
+  const cronExpr = getKV(CRON_KV_KEY, idleReport.cron);
+  applySchedule(cronExpr);
 }
 
-module.exports = { register, refreshMembership };
+// See titleRotator.js's reschedule() for the full explanation — same
+// persist-then-swap pattern, returns false if the feature is disabled.
+function reschedule(cronExpr) {
+  if (!boundRun) return false;
+  setKV(CRON_KV_KEY, cronExpr);
+  applySchedule(cronExpr);
+  return true;
+}
+
+module.exports = { register, reschedule, refreshMembership, CRON_KV_KEY };

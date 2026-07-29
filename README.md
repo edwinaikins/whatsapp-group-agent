@@ -228,6 +228,15 @@ From there you can:
   and restarting for this one.
 - **Daily activity prompts** — add/remove/reorder prompts, optionally
   with an image attached to each, and set what time of day they post.
+- **Inactive members** — set when the idle check runs (every day, or a
+  specific day of the week, at a time you pick), and see the actual
+  list of who's currently idle (name and how many days they've been
+  quiet) instead of only finding out from the weekly group post. Each
+  person has their own "Send custom" (type something specific to them)
+  and "Send default" (uses the saved nudge message below, with `{name}`
+  filled in) buttons, so you can follow up one-on-one without waiting
+  for the scheduled report — this is separate from that report, which
+  still posts one combined tagged list in the group on its own schedule.
 - **Birthdays** — add/remove entries (name, phone, month, day, optional
   photo) for the daily birthday check, and edit the message itself
   (use `{name}` where the person's name should go). Editing it here
@@ -243,14 +252,14 @@ used them is gone.
 - Everything content-related (titles, prompts, birthdays, one-off
   posts, group name/icon) is managed from the dashboard — no restart
   needed.
-- Title rotation's and daily activity's *timing* is also
-  dashboard-editable (see "The dashboard" above) and takes effect
-  immediately, no restart needed.
-- The idle report's schedule and the idle threshold, and the birthday
-  check's schedule (not the message itself, which is dashboard-editable
-  — just what time it checks), still live in `config.json` — edit it
-  and restart the `whatsapp-group-agent` container/process to change
-  those.
+- Title rotation's, daily activity's, and the idle report's *timing*
+  are all dashboard-editable (see "The dashboard" above) and take
+  effect immediately, no restart needed.
+- The idle threshold (how many quiet days counts as idle) and the
+  birthday check's schedule (not its message, which is
+  dashboard-editable — just what time it checks) still live in
+  `config.json` — edit it and restart the `whatsapp-group-agent`
+  container/process to change those.
 - If the bot ever gets logged out (e.g. you unlink it from the phone),
   delete the `auth_state/` folder and repeat step 2.
 
