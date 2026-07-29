@@ -80,6 +80,11 @@
   .pill.pending { background: rgba(79,124,255,.15); color: #7fa1ff; }
   .pill.sent { background: rgba(34,197,94,.15); color: #4ade80; }
   .pill.failed { background: rgba(239,68,68,.15); color: #f87171; }
+  .pill.today { background: rgba(79,124,255,.3); color: #cddcff; margin-left: 6px; }
+  .table-scroll { max-height: 360px; overflow-y: auto; border: 1px solid var(--panel-border); border-radius: 8px; }
+  .table-scroll table { margin: 0; }
+  .table-scroll thead th { position: sticky; top: 0; background: #1c202a; z-index: 1; }
+  tr.pinned-today { background: rgba(79,124,255,.06); }
   #toast {
     position: fixed; bottom: 20px; right: 20px; background: var(--panel);
     border: 1px solid var(--panel-border); padding: 10px 16px; border-radius: 8px;
@@ -139,14 +144,36 @@
     <div class="row">
       <button onclick="scheduleAction()">Schedule</button>
     </div>
-    <table id="posts-table">
-      <thead><tr><th>When</th><th>Action</th><th>Details</th><th>Status</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table>
+    <div class="row">
+      <input type="text" id="posts-search" placeholder="Search scheduled actions…" style="flex:1; min-width:200px;" oninput="renderPosts()" />
+      <span class="muted">Today's actions always stay visible here, even mid-search.</span>
+    </div>
+    <div class="table-scroll">
+      <table id="posts-table">
+        <thead><tr><th>When</th><th>Action</th><th>Details</th><th>Status</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </section>
 
   <section class="panel">
     <h2>Title rotation</h2>
+    <div class="row">
+      <label class="muted" style="min-width:40px;">Runs:</label>
+      <select id="title-cron-dow">
+        <option value="*">Every day</option>
+        <option value="0">Sundays</option>
+        <option value="1">Mondays</option>
+        <option value="2">Tuesdays</option>
+        <option value="3">Wednesdays</option>
+        <option value="4">Thursdays</option>
+        <option value="5">Fridays</option>
+        <option value="6">Saturdays</option>
+      </select>
+      <input type="time" id="title-cron-time" />
+      <button onclick="saveTitleCron()">Save schedule</button>
+      <span class="muted" id="title-cron-note"></span>
+    </div>
     <div class="row">
       <input type="text" id="title-text" placeholder="Title text" style="flex:1; min-width:200px;" />
       <input type="number" id="title-order" placeholder="Order" style="width:80px;" />
@@ -160,6 +187,13 @@
 
   <section class="panel">
     <h2>Daily activity prompts</h2>
+    <div class="row">
+      <label class="muted" style="min-width:40px;">Runs:</label>
+      <span class="muted">Every day at</span>
+      <input type="time" id="activity-cron-time" />
+      <button onclick="saveActivityCron()">Save schedule</button>
+      <span class="muted" id="activity-cron-note"></span>
+    </div>
     <div class="row">
       <textarea id="prompt-text" placeholder="Prompt text" style="flex:1; min-width:200px;"></textarea>
     </div>
@@ -364,6 +398,61 @@ async function deleteBirthday(id) {
   loadBirthdays();
 }
 
+// ---- Posting schedule (when title rotation / daily activity fire) ----
+function pad2(n) { return String(n).padStart(2, '0'); }
+
+async function loadSchedules() {
+  const s = await api('/api/settings/schedules');
+
+  const titleNote = document.getElementById('title-cron-note');
+  if (s.titleRotation.custom) {
+    titleNote.textContent = `Custom schedule in config.json: "${s.titleRotation.cron}"`;
+  } else {
+    document.getElementById('title-cron-dow').value = String(s.titleRotation.dayOfWeek);
+    document.getElementById('title-cron-time').value = `${pad2(s.titleRotation.hour)}:${pad2(s.titleRotation.minute)}`;
+    titleNote.textContent = '';
+  }
+
+  const activityNote = document.getElementById('activity-cron-note');
+  if (s.dailyActivity.custom) {
+    activityNote.textContent = `Custom schedule in config.json: "${s.dailyActivity.cron}"`;
+  } else {
+    document.getElementById('activity-cron-time').value = `${pad2(s.dailyActivity.hour)}:${pad2(s.dailyActivity.minute)}`;
+    activityNote.textContent = '';
+  }
+}
+
+async function saveTitleCron() {
+  const time = document.getElementById('title-cron-time').value;
+  const dayOfWeek = document.getElementById('title-cron-dow').value;
+  if (!time) return toast('Pick a time first', true);
+  const [hour, minute] = time.split(':').map(Number);
+  try {
+    await api('/api/settings/schedules/title-rotation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hour, minute, dayOfWeek }),
+    });
+    document.getElementById('title-cron-note').textContent = '';
+    toast('Title rotation schedule saved');
+  } catch (err) { toast(err.message, true); }
+}
+
+async function saveActivityCron() {
+  const time = document.getElementById('activity-cron-time').value;
+  if (!time) return toast('Pick a time first', true);
+  const [hour, minute] = time.split(':').map(Number);
+  try {
+    await api('/api/settings/schedules/daily-activity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hour, minute }),
+    });
+    document.getElementById('activity-cron-note').textContent = '';
+    toast('Daily activity schedule saved');
+  } catch (err) { toast(err.message, true); }
+}
+
 // ---- Scheduled group actions ----
 const ACTION_LABELS = { message: 'Post message', rename: 'Rename group', icon: 'Change icon' };
 
@@ -399,38 +488,76 @@ function onMentionAllChange() {
   if (checked) phonesInput.value = '';
 }
 
+let allPosts = [];
+
 async function loadPosts() {
-  const rows = await api('/api/scheduled-posts');
+  allPosts = await api('/api/scheduled-posts');
+  renderPosts();
+}
+
+function isToday(ms) {
+  const d = new Date(ms);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+function postMatchesSearch(r, q) {
+  if (!q) return true;
+  const type = r.type || 'message';
+  const haystack = [ACTION_LABELS[type] || type, r.text || '', r.status, new Date(r.run_at).toLocaleString()]
+    .join(' ')
+    .toLowerCase();
+  return haystack.includes(q);
+}
+
+function buildPostRow(r, isPinned) {
+  const type = r.type || 'message';
+  let details;
+  if (type === 'rename') {
+    details = 'New name: ' + escapeHtml(r.text || '');
+  } else if (type === 'icon') {
+    details = r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : '<span class="muted">none</span>';
+  } else {
+    const tag = r.mention_all
+      ? ' <span class="muted">(tags everyone)</span>'
+      : (r.mention_phones ? ' <span class="muted">(tags specific people)</span>' : '');
+    details = `${escapeHtml(r.text || '')} ${r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : ''}${tag}`;
+  }
+  const actions = r.status === 'pending'
+    ? `<button class="danger" onclick="deletePost(${r.id})">Cancel</button>`
+    : `<button class="secondary" onclick="toggleReschedule(${r.id})">Reschedule</button>
+       <span id="reschedule-${r.id}" style="display:none; align-items:center; gap:6px; margin-top:6px;">
+         <input type="datetime-local" id="reschedule-when-${r.id}" />
+         <button onclick="confirmReschedule(${r.id})">Confirm</button>
+       </span>`;
+  return `
+  <tr${isPinned ? ' class="pinned-today"' : ''}>
+    <td>${new Date(r.run_at).toLocaleString()}${isPinned ? ' <span class="pill today">today</span>' : ''}</td>
+    <td>${ACTION_LABELS[type] || type}</td>
+    <td>${details}</td>
+    <td><span class="pill ${r.status}">${r.status}</span></td>
+    <td>${actions}</td>
+  </tr>`;
+}
+
+function renderPosts() {
+  const q = (document.getElementById('posts-search').value || '').trim().toLowerCase();
+
+  // Today's actions are always shown regardless of the search box, and
+  // pinned above the (possibly filtered) rest of the list — the whole
+  // point being that what's happening today never scrolls out of view
+  // or gets hidden by an unrelated search.
+  const pinned = allPosts.filter((r) => isToday(r.run_at));
+  const pinnedIds = new Set(pinned.map((r) => r.id));
+  const rest = allPosts.filter((r) => !pinnedIds.has(r.id) && postMatchesSearch(r, q));
+
   const tbody = document.querySelector('#posts-table tbody');
-  tbody.innerHTML = rows.map(r => {
-    const type = r.type || 'message';
-    let details;
-    if (type === 'rename') {
-      details = 'New name: ' + escapeHtml(r.text || '');
-    } else if (type === 'icon') {
-      details = r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : '<span class="muted">none</span>';
-    } else {
-      const tag = r.mention_all
-        ? ' <span class="muted">(tags everyone)</span>'
-        : (r.mention_phones ? ' <span class="muted">(tags specific people)</span>' : '');
-      details = `${escapeHtml(r.text || '')} ${r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : ''}${tag}`;
-    }
-    const actions = r.status === 'pending'
-      ? `<button class="danger" onclick="deletePost(${r.id})">Cancel</button>`
-      : `<button class="secondary" onclick="toggleReschedule(${r.id})">Reschedule</button>
-         <span id="reschedule-${r.id}" style="display:none; align-items:center; gap:6px; margin-top:6px;">
-           <input type="datetime-local" id="reschedule-when-${r.id}" />
-           <button onclick="confirmReschedule(${r.id})">Confirm</button>
-         </span>`;
-    return `
-    <tr>
-      <td>${new Date(r.run_at).toLocaleString()}</td>
-      <td>${ACTION_LABELS[type] || type}</td>
-      <td>${details}</td>
-      <td><span class="pill ${r.status}">${r.status}</span></td>
-      <td>${actions}</td>
-    </tr>`;
-  }).join('');
+  const rows = [...pinned, ...rest];
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="muted">${q ? 'No matching scheduled actions.' : 'Nothing scheduled yet.'}</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = rows.map((r) => buildPostRow(r, pinnedIds.has(r.id))).join('');
 }
 function toggleReschedule(id) {
   const el = document.getElementById('reschedule-' + id);
@@ -487,6 +614,7 @@ function escapeHtml(s) {
 
 function refreshAll() {
   refreshStatus();
+  loadSchedules();
   loadTitles();
   loadPrompts();
   loadBdayTemplate();

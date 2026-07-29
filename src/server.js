@@ -29,8 +29,25 @@ const {
   getKV,
   setKV,
 } = require('./db');
+const titleRotator = require('./features/titleRotator');
+const dailyActivity = require('./features/dailyActivity');
 
 const BIRTHDAY_TEMPLATE_KV_KEY = 'birthday_message_template';
+
+// Only understands the simple "M H * * D" shape the dashboard's day/time
+// pickers produce. A cron expression hand-edited in config.json into
+// something more exotic (ranges, steps, multiple days) won't match —
+// callers should treat a null return as "can't be shown in the simple
+// picker, display the raw cron string instead."
+function parseSimpleCron(cronExpr) {
+  const m = /^(\d{1,2}) (\d{1,2}) \* \* (\*|[0-6])$/.exec(String(cronExpr).trim());
+  if (!m) return null;
+  return {
+    minute: Number(m[1]),
+    hour: Number(m[2]),
+    dayOfWeek: m[3] === '*' ? '*' : Number(m[3]),
+  };
+}
 
 const UPLOADS_DIR = path.join(__dirname, '..', 'data', 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
@@ -204,6 +221,77 @@ function start(sock, cfg) {
     }
     setKV(BIRTHDAY_TEMPLATE_KV_KEY, template);
     res.json({ ok: true });
+  });
+
+  // ---- Posting schedule (title rotation / daily activity) ----
+  // These change WHEN the two recurring features fire. What they post
+  // (titles, prompts) is managed by the sections above/below; this is
+  // purely the cron timing, editable here instead of config.json + restart.
+  app.get('/api/settings/schedules', (req, res) => {
+    const titleCron = getKV(titleRotator.CRON_KV_KEY, cfg.titleRotation.cron);
+    const activityCron = getKV(dailyActivity.CRON_KV_KEY, cfg.dailyActivity.cron);
+    const titleParsed = parseSimpleCron(titleCron);
+    const activityParsed = parseSimpleCron(activityCron);
+
+    res.json({
+      titleRotation: {
+        cron: titleCron,
+        enabled: cfg.titleRotation.enabled,
+        custom: !titleParsed,
+        ...(titleParsed || {}),
+      },
+      dailyActivity: {
+        cron: activityCron,
+        enabled: cfg.dailyActivity.enabled,
+        custom: !activityParsed,
+        ...(activityParsed || {}),
+      },
+    });
+  });
+
+  app.post('/api/settings/schedules/title-rotation', (req, res) => {
+    const hour = Number(req.body.hour);
+    const minute = Number(req.body.minute);
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+      return res.status(400).json({ error: 'hour must be 0-23' });
+    }
+    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+      return res.status(400).json({ error: 'minute must be 0-59' });
+    }
+    let dayOfWeek = req.body.dayOfWeek;
+    if (dayOfWeek === undefined || dayOfWeek === null || dayOfWeek === '' || dayOfWeek === '*') {
+      dayOfWeek = '*';
+    } else {
+      dayOfWeek = Number(dayOfWeek);
+      if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
+        return res.status(400).json({ error: 'dayOfWeek must be 0-6 (Sun-Sat) or omitted for every day' });
+      }
+    }
+
+    const cronExpr = `${minute} ${hour} * * ${dayOfWeek}`;
+    const applied = titleRotator.reschedule(cronExpr);
+    if (!applied) {
+      return res.status(400).json({ error: 'Title rotation is disabled (titleRotation.enabled is false in config.json)' });
+    }
+    res.json({ ok: true, cron: cronExpr });
+  });
+
+  app.post('/api/settings/schedules/daily-activity', (req, res) => {
+    const hour = Number(req.body.hour);
+    const minute = Number(req.body.minute);
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+      return res.status(400).json({ error: 'hour must be 0-23' });
+    }
+    if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+      return res.status(400).json({ error: 'minute must be 0-59' });
+    }
+
+    const cronExpr = `${minute} ${hour} * * *`;
+    const applied = dailyActivity.reschedule(cronExpr);
+    if (!applied) {
+      return res.status(400).json({ error: 'Daily activity posting is disabled (dailyActivity.enabled is false in config.json)' });
+    }
+    res.json({ ok: true, cron: cronExpr });
   });
 
   // ---- Scheduled one-off posts ----

@@ -216,11 +216,18 @@ From there you can:
   the tag to render, so the dashboard appends those automatically.
   Already-sent or failed actions can be rescheduled for a new
   date/time without recreating them from scratch — it reuses the same
-  text/image/tagging as the original.
+  text/image/tagging as the original. As this list grows, use the
+  search box to filter it (matches on action type, text, status, and
+  date) — the table itself scrolls independently so the rest of the
+  dashboard doesn't get pushed down, and anything scheduled for
+  *today* always stays visible at the top regardless of what you've
+  searched for.
 - **Title rotation** — add/remove/reorder the titles the bot cycles
-  through on its schedule.
+  through, and set when the rotation fires (every day, or a specific
+  day of the week, at a time you pick) — no more editing `config.json`
+  and restarting for this one.
 - **Daily activity prompts** — add/remove/reorder prompts, optionally
-  with an image attached to each.
+  with an image attached to each, and set what time of day they post.
 - **Birthdays** — add/remove entries (name, phone, month, day, optional
   photo) for the daily birthday check, and edit the message itself
   (use `{name}` where the person's name should go). Editing it here
@@ -236,8 +243,14 @@ used them is gone.
 - Everything content-related (titles, prompts, birthdays, one-off
   posts, group name/icon) is managed from the dashboard — no restart
   needed.
-- To change cron schedules or the idle threshold, edit `config.json`
-  and restart the `whatsapp-group-agent` container/process.
+- Title rotation's and daily activity's *timing* is also
+  dashboard-editable (see "The dashboard" above) and takes effect
+  immediately, no restart needed.
+- The idle report's schedule and the idle threshold, and the birthday
+  check's schedule (not the message itself, which is dashboard-editable
+  — just what time it checks), still live in `config.json` — edit it
+  and restart the `whatsapp-group-agent` container/process to change
+  those.
 - If the bot ever gets logged out (e.g. you unlink it from the phone),
   delete the `auth_state/` folder and repeat step 2.
 

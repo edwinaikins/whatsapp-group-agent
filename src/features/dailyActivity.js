@@ -5,11 +5,27 @@ const { getKV, setKV, listPrompts } = require('../db');
 
 const UPLOADS_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
 
+// Same pattern as titleRotator.js: the cron expression lives in the kv
+// store once someone edits the schedule from the dashboard, falling back
+// to config.json's dailyActivity.cron for installs that never touch it.
+const CRON_KV_KEY = 'daily_activity_cron';
+
+let currentTask = null;
+let boundTimezone = null;
+let boundRun = null;
+
+function applySchedule(cronExpr) {
+  if (currentTask) currentTask.stop();
+  currentTask = cron.schedule(cronExpr, boundRun, { timezone: boundTimezone });
+  console.log(`[dailyActivity] Scheduled with cron "${cronExpr}" (${boundTimezone})`);
+}
+
 function register(sock, cfg) {
   const { dailyActivity, groupJid, timezone } = cfg;
   if (!dailyActivity.enabled) return;
 
-  const run = async () => {
+  boundTimezone = timezone;
+  boundRun = async () => {
     try {
       const prompts = listPrompts().filter((p) => p.text);
       if (!prompts.length) {
@@ -34,8 +50,17 @@ function register(sock, cfg) {
     }
   };
 
-  cron.schedule(dailyActivity.cron, run, { timezone });
-  console.log(`[dailyActivity] Scheduled with cron "${dailyActivity.cron}" (${timezone})`);
+  const cronExpr = getKV(CRON_KV_KEY, dailyActivity.cron);
+  applySchedule(cronExpr);
 }
 
-module.exports = { register };
+// See titleRotator.js's reschedule() for the full explanation — same
+// persist-then-swap pattern, returns false if the feature is disabled.
+function reschedule(cronExpr) {
+  if (!boundRun) return false;
+  setKV(CRON_KV_KEY, cronExpr);
+  applySchedule(cronExpr);
+  return true;
+}
+
+module.exports = { register, reschedule, CRON_KV_KEY };
