@@ -187,16 +187,30 @@ function start(sock, cfg) {
     res.json({ ok: true });
   });
 
-  // ---- Scheduled one-off posts ----
+  // ---- Scheduled group actions ----
   app.get('/api/scheduled-posts', (req, res) => res.json(listScheduledPosts()));
 
   app.post('/api/scheduled-posts', upload.single('image'), (req, res) => {
     const { runAt, text } = req.body;
+    const type = ['message', 'rename', 'icon'].includes(req.body.type) ? req.body.type : 'message';
+
     if (!runAt) return res.status(400).json({ error: 'runAt is required' });
     const runAtMs = new Date(runAt).getTime();
     if (Number.isNaN(runAtMs)) return res.status(400).json({ error: 'runAt is not a valid date/time' });
+
+    if (type === 'rename' && !text) {
+      return res.status(400).json({ error: 'A new group name is required to schedule a rename' });
+    }
+    if (type === 'icon' && !req.file) {
+      return res.status(400).json({ error: 'An image is required to schedule an icon change' });
+    }
+    if (type === 'message' && !text && !req.file) {
+      return res.status(400).json({ error: 'Add text or an image' });
+    }
+
     const id = createScheduledPost({
       runAt: runAtMs,
+      type,
       text: text || null,
       imagePath: req.file ? req.file.filename : null,
     });

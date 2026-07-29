@@ -47,6 +47,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS scheduled_posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_at INTEGER NOT NULL,
+    type TEXT NOT NULL DEFAULT 'message',
     text TEXT,
     image_path TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
@@ -55,6 +56,14 @@ db.exec(`
     error TEXT
   );
 `);
+
+// Migration: older databases were created before scheduled_posts could
+// represent anything other than a message post — add the `type` column
+// if it's missing so existing installs don't need to delete their DB.
+const scheduledPostsColumns = db.prepare("PRAGMA table_info(scheduled_posts)").all().map((c) => c.name);
+if (!scheduledPostsColumns.includes('type')) {
+  db.exec("ALTER TABLE scheduled_posts ADD COLUMN type TEXT NOT NULL DEFAULT 'message'");
+}
 
 // ---- Member / idle tracking (unchanged) ----
 
@@ -213,12 +222,12 @@ function getScheduledPostById(id) {
   return db.prepare('SELECT * FROM scheduled_posts WHERE id = ?').get(id);
 }
 
-function createScheduledPost({ runAt, text = null, imagePath = null }) {
+function createScheduledPost({ runAt, type = 'message', text = null, imagePath = null }) {
   const info = db
     .prepare(
-      'INSERT INTO scheduled_posts (run_at, text, image_path, status, created_at) VALUES (?, ?, ?, ?, ?)'
+      'INSERT INTO scheduled_posts (run_at, type, text, image_path, status, created_at) VALUES (?, ?, ?, ?, ?, ?)'
     )
-    .run(runAt, text, imagePath, 'pending', Date.now());
+    .run(runAt, type, text, imagePath, 'pending', Date.now());
   return info.lastInsertRowid;
 }
 

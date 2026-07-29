@@ -114,19 +114,26 @@
   </section>
 
   <section class="panel">
-    <h2>Schedule a one-off post</h2>
+    <h2>Schedule a group action</h2>
     <div class="row">
+      <select id="action-type" onchange="onActionTypeChange()">
+        <option value="message">Post a message</option>
+        <option value="rename">Rename the group</option>
+        <option value="icon">Change the group icon</option>
+      </select>
       <input type="datetime-local" id="post-when" />
+    </div>
+    <div class="row" id="action-text-row">
+      <textarea id="post-text" placeholder="Message text (optional if an image is attached)" style="width:100%;"></textarea>
+    </div>
+    <div class="row" id="action-image-row">
       <input type="file" id="post-image" accept="image/*" />
     </div>
     <div class="row">
-      <textarea id="post-text" placeholder="Message text (optional if an image is attached)"></textarea>
-    </div>
-    <div class="row">
-      <button onclick="schedulePost()">Schedule post</button>
+      <button onclick="scheduleAction()">Schedule</button>
     </div>
     <table id="posts-table">
-      <thead><tr><th>When</th><th>Text</th><th>Image</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>When</th><th>Action</th><th>Details</th><th>Status</th><th></th></tr></thead>
       <tbody></tbody>
     </table>
   </section>
@@ -329,31 +336,70 @@ async function deleteBirthday(id) {
   loadBirthdays();
 }
 
-// ---- Scheduled posts ----
+// ---- Scheduled group actions ----
+const ACTION_LABELS = { message: 'Post message', rename: 'Rename group', icon: 'Change icon' };
+
+function onActionTypeChange() {
+  const type = document.getElementById('action-type').value;
+  const textRow = document.getElementById('action-text-row');
+  const imageRow = document.getElementById('action-image-row');
+  const textArea = document.getElementById('post-text');
+
+  if (type === 'rename') {
+    textRow.style.display = '';
+    imageRow.style.display = 'none';
+    textArea.placeholder = 'New group name';
+  } else if (type === 'icon') {
+    textRow.style.display = 'none';
+    imageRow.style.display = '';
+    textArea.value = '';
+  } else {
+    textRow.style.display = '';
+    imageRow.style.display = '';
+    textArea.placeholder = 'Message text (optional if an image is attached)';
+  }
+}
+
 async function loadPosts() {
   const rows = await api('/api/scheduled-posts');
   const tbody = document.querySelector('#posts-table tbody');
-  tbody.innerHTML = rows.map(r => `
+  tbody.innerHTML = rows.map(r => {
+    const type = r.type || 'message';
+    let details;
+    if (type === 'rename') {
+      details = 'New name: ' + escapeHtml(r.text || '');
+    } else if (type === 'icon') {
+      details = r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : '<span class="muted">none</span>';
+    } else {
+      details = `${escapeHtml(r.text || '')} ${r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : ''}`;
+    }
+    return `
     <tr>
       <td>${new Date(r.run_at).toLocaleString()}</td>
-      <td>${escapeHtml(r.text || '')}</td>
-      <td>${r.image_path ? `<img class="thumb" src="/uploads/${r.image_path}" />` : '<span class="muted">none</span>'}</td>
+      <td>${ACTION_LABELS[type] || type}</td>
+      <td>${details}</td>
       <td><span class="pill ${r.status}">${r.status}</span></td>
       <td>${r.status === 'pending' ? `<button class="danger" onclick="deletePost(${r.id})">Cancel</button>` : ''}</td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
-async function schedulePost() {
+async function scheduleAction() {
+  const type = document.getElementById('action-type').value;
   const when = document.getElementById('post-when').value;
   const text = document.getElementById('post-text').value.trim();
   const file = document.getElementById('post-image').files[0];
   if (!when) return toast('Pick a date/time', true);
-  if (!text && !file) return toast('Add text or an image', true);
+  if (type === 'rename' && !text) return toast('Enter the new group name', true);
+  if (type === 'icon' && !file) return toast('Choose an image first', true);
+  if (type === 'message' && !text && !file) return toast('Add text or an image', true);
   const fd = new FormData();
   fd.append('runAt', new Date(when).toISOString());
+  fd.append('type', type);
   if (text) fd.append('text', text);
   if (file) fd.append('image', file);
   await api('/api/scheduled-posts', { method: 'POST', body: fd });
   document.getElementById('post-text').value = '';
+  document.getElementById('post-image').value = '';
   loadPosts();
 }
 async function deletePost(id) {

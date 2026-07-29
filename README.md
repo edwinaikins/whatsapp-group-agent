@@ -206,10 +206,11 @@ Visit `https://agent.yourdomain.com` (your actual subdomain) and log in.
 From there you can:
 
 - **Group settings** — rename the group or upload a new icon immediately.
-- **Schedule a one-off post** — pick a date/time (in your browser's
-  local timezone), optionally attach an image, and it'll post
-  automatically at that moment; a background check runs every minute.
-  Pending posts can be cancelled before they fire.
+- **Schedule a group action** — pick a date/time (in your browser's
+  local timezone) and choose to post a message (optionally with an
+  image), rename the group, or change its icon at that moment; a
+  background check runs every minute. Pending actions can be cancelled
+  before they fire.
 - **Title rotation** — add/remove/reorder the titles the bot cycles
   through on its schedule.
 - **Daily activity prompts** — add/remove/reorder prompts, optionally
