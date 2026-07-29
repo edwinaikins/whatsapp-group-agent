@@ -52,6 +52,8 @@ Edit `.env`:
 - Set `ADMIN_USER` / `ADMIN_PASSWORD` for the dashboard login — pick a
   strong password.
 - `TIMEZONE` defaults to `Africa/Accra` — change if needed.
+- `HOST_PORT` defaults to `3000` — only change it if something else on
+  the server already uses port 3000 (see step 4).
 
 Edit `config.json` to adjust cron schedules and the idle threshold to
 taste. Cron format is `minute hour day-of-month month day-of-week`,
@@ -110,11 +112,24 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-This publishes the dashboard on `127.0.0.1:3000` only — it's not
-reachable from the internet until a reverse proxy in front of it
-terminates HTTPS on your public hostname. `auth_state/` and `data/`
-(SQLite DB + uploaded images) persist across container restarts and
-rebuilds.
+This publishes the dashboard on `127.0.0.1:3000` only (or whatever
+`HOST_PORT` you set in `.env` — see below) — it's not reachable from
+the internet until a reverse proxy in front of it terminates HTTPS on
+your public hostname. `auth_state/` and `data/` (SQLite DB + uploaded
+images) persist across container restarts and rebuilds.
+
+If `docker compose up -d --build` fails with something like `failed to
+bind host port 127.0.0.1:3000/tcp: address already in use`, something
+else on the VPS already owns port 3000 (run `sudo ss -tlnp | grep 3000`
+to see what). Rather than fighting over it, set a different one in
+`.env`:
+
+```
+HOST_PORT=3001
+```
+
+then `docker compose up -d --build` again — just remember to point
+`proxy_pass` at that same port in the nginx block below.
 
 ### If nginx is already running other sites on this VPS
 
@@ -133,6 +148,7 @@ server {
     client_max_body_size 20M;
 
     location / {
+        # Match this to HOST_PORT in .env (3000 unless you changed it).
         proxy_pass http://127.0.0.1:3000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

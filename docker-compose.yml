@@ -10,8 +10,12 @@ services:
     ports:
       # Bound to localhost only — the dashboard is reached through the
       # host's own nginx (reverse-proxying + TLS), never directly from
-      # the internet on this port.
-      - "127.0.0.1:3000:3000"
+      # the internet on this port. HOST_PORT (set in .env, defaults to
+      # 3000) is the *host-side* port only — change it here if something
+      # else on the VPS already owns 3000; the container still listens
+      # on 3000 internally either way, so nginx's proxy_pass just needs
+      # to match whatever HOST_PORT you pick.
+      - "127.0.0.1:${HOST_PORT:-3000}:3000"
     # Needed the first time, to type the pairing code interactively:
     #   docker compose run --rm whatsapp-group-agent
     # After that, `docker compose up -d` runs it in the background.
