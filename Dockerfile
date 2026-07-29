@@ -9,7 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY package.json ./
-RUN npm install --omit=dev
+
+# Some Baileys dependencies (e.g. libsignal-node) are declared as
+# git+ssh://git@github.com/... URLs. There's no SSH key in this image, so
+# rewrite those to plain HTTPS, which works anonymously for public repos.
+RUN git config --global url."https://github.com/".insteadOf "ssh://git@github.com/" \
+    && npm install --omit=dev
 
 COPY . .
 
