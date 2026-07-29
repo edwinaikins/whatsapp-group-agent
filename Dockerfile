@@ -26,7 +26,8 @@ COPY . .
 VOLUME ["/app/auth_state", "/app/data"]
 
 # Dashboard (Express). Not published to the host directly — see
-# docker-compose.yml, which fronts this with Caddy for HTTPS.
+# docker-compose.yml, which binds it to 127.0.0.1 only; the host's own
+# nginx reverse-proxies it for public HTTPS access.
 EXPOSE 3000
 
 CMD ["node", "src/index.js"]

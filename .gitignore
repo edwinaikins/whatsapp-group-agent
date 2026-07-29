@@ -8,3 +8,4 @@ data/uploads/
 .deploy_key/
 data/birthdays.csv.example
 src/airtable.js
+Caddyfile

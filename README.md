@@ -35,8 +35,8 @@ below before you rely on this.
 - **The dashboard can post to the group, rename it, and change its
   icon** — anyone with the login can do all of that, so treat the
   password like you would any account with real-world consequences. It's
-  served over HTTPS (via the Caddy setup below) specifically so that
-  password never travels in the clear.
+  served over HTTPS (via the reverse-proxy setup below) specifically so
+  that password never travels in the clear.
 
 ## 1. One-time setup
 
@@ -51,8 +51,6 @@ Edit `.env`:
   number, digits only (e.g. `233241234567`).
 - Set `ADMIN_USER` / `ADMIN_PASSWORD` for the dashboard login — pick a
   strong password.
-- Set `DOMAIN` to the subdomain you'll point at the VPS (e.g.
-  `agent.yourdomain.com`) — see step 4.
 - `TIMEZONE` defaults to `Africa/Accra` — change if needed.
 
 Edit `config.json` to adjust cron schedules and the idle threshold to
@@ -87,23 +85,16 @@ restart it. From now on it'll pick up the group automatically.
 
 ## 3. Point a subdomain at the VPS
 
-Before starting the dashboard, create a DNS **A record** for the
-subdomain you put in `.env` as `DOMAIN`, pointing at the VPS's IP
-address. This has to be in place (and to have propagated — usually
-minutes, occasionally longer) before Caddy can request its certificate,
-since Let's Encrypt validates ownership by reaching that hostname.
-
-Also make sure ports **80** and **443** are open on the VPS (cloud
-firewall / security group, and any host firewall like `ufw`) — Caddy
-needs 80 for the ACME HTTP challenge and 443 to serve the dashboard.
+Create a DNS **A record** for the subdomain you want the dashboard on
+(e.g. `agent.yourdomain.com`), pointing at the VPS's IP address, and
+give it a little time to propagate before the next step (Let's Encrypt
+needs to actually reach that hostname to issue a certificate).
 
 ## 4. Deploy it to run 24/7
 
 The bot needs a long-lived process (it holds an open WebSocket to
 WhatsApp), so it can't run as a serverless function — a small
-always-on VPS works well. Any $5–6/month box (DigitalOcean, Hetzner,
-a Fly.io VM, a Railway worker, etc.) is enough; it's barely using any
-resources.
+always-on VPS works well.
 
 Copy this whole project folder to the server, then:
 
@@ -114,18 +105,64 @@ docker compose run --rm whatsapp-group-agent
 #      send a test message in the group to discover its JID, fill in
 #      GROUP_JID in .env, then Ctrl+C.
 
-# Bring everything up, including Caddy (which will request the
-# certificate for DOMAIN on first start — check its logs if it hangs):
+# Bring it up in the background:
 docker compose up -d --build
-docker compose logs -f caddy
-docker compose logs -f whatsapp-group-agent
+docker compose logs -f
 ```
 
-Once Caddy reports it obtained a certificate, the dashboard is live at
-`https://<DOMAIN>` — log in with `ADMIN_USER` / `ADMIN_PASSWORD`.
+This publishes the dashboard on `127.0.0.1:3000` only — it's not
+reachable from the internet until a reverse proxy in front of it
+terminates HTTPS on your public hostname. `auth_state/` and `data/`
+(SQLite DB + uploaded images) persist across container restarts and
+rebuilds.
 
-`auth_state/`, `data/` (SQLite DB + uploaded images), and Caddy's
-certificate volumes all persist across container restarts and rebuilds.
+### If nginx is already running other sites on this VPS
+
+Don't run a second thing on ports 80/443 — add the dashboard as another
+site in your existing nginx instead. Create
+`/etc/nginx/sites-available/agent.yourdomain.com` (swap in your real
+subdomain) with:
+
+```nginx
+server {
+    listen 80;
+    server_name agent.yourdomain.com;
+
+    # Birthday/prompt photos and group icons can be a few MB — nginx's
+    # 1MB default would reject those uploads with a 413 otherwise.
+    client_max_body_size 20M;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Then enable it and get a certificate:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/agent.yourdomain.com /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+sudo certbot --nginx -d agent.yourdomain.com
+```
+
+`certbot` rewrites that server block to add the certificate, `listen
+443 ssl`, and an HTTP→HTTPS redirect automatically. This doesn't touch
+whatever's already configured for your other site(s) on the same nginx.
+
+### If this VPS has no reverse proxy at all yet
+
+Simplest option: install nginx and certbot fresh, then follow the same
+steps above.
+
+```bash
+sudo apt-get install -y nginx certbot python3-certbot-nginx
+```
 
 ### Alternative: plain Node instead of Docker
 
@@ -144,12 +181,13 @@ pm2 save
 pm2 startup   # follow the printed instructions to survive reboots
 ```
 
-Note this skips Caddy — you'd need to set up your own reverse proxy /
-TLS termination (e.g. nginx + certbot) for the dashboard in this case.
+Still needs the nginx (or other reverse proxy) setup above for the
+dashboard's public HTTPS access.
 
 ## 5. The dashboard
 
-Visit `https://<DOMAIN>` and log in. From there you can:
+Visit `https://agent.yourdomain.com` (your actual subdomain) and log in.
+From there you can:
 
 - **Group settings** — rename the group or upload a new icon immediately.
 - **Schedule a one-off post** — pick a date/time (in your browser's
@@ -198,6 +236,5 @@ src/
 public/
   index.html         the dashboard's single-page frontend
 config.json          schedules + idle threshold, safe to edit anytime
-Caddyfile            reverse proxy config; DOMAIN is templated in from .env
 data/uploads/        images uploaded via the dashboard
 ```
