@@ -1,8 +1,10 @@
 FROM node:22-bookworm-slim
 
-# better-sqlite3 needs build tools to compile its native addon.
+# python3/make/g++ are needed to compile better-sqlite3's native addon.
+# git is needed because some Baileys dependencies are installed straight
+# from GitHub rather than the npm registry.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 make g++ \
+    python3 make g++ git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
