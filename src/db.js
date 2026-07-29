@@ -90,18 +90,24 @@ function upsertMemberSeen(jid, name, whenMs) {
 }
 
 function syncMembershipList(participants) {
-  // participants: [{ jid, name, admin }]
+  // participants: [{ jid, name, admin }] — name may be null when
+  // WhatsApp didn't give us anything better for this participant right
+  // now (most commonly an @lid participant Baileys hasn't resolved to a
+  // phone number or push name). COALESCE on conflict means a sync with
+  // no name never overwrites a name we already learned some other way
+  // (e.g. from a message they sent) — only a real name replaces a real
+  // name.
   const now = Date.now();
   const upsert = db.prepare(`
     INSERT INTO members (jid, name, joined_at, is_admin)
     VALUES (@jid, @name, @now, @admin)
     ON CONFLICT(jid) DO UPDATE SET
-      name = excluded.name,
+      name = COALESCE(excluded.name, members.name),
       is_admin = excluded.is_admin
   `);
   const tx = db.transaction((rows) => {
     for (const p of rows) {
-      upsert.run({ jid: p.jid, name: p.name || p.jid, now, admin: p.admin ? 1 : 0 });
+      upsert.run({ jid: p.jid, name: p.name ?? null, now, admin: p.admin ? 1 : 0 });
     }
   });
   tx(participants);

@@ -237,6 +237,10 @@ From there you can:
   filled in) buttons, so you can follow up one-on-one without waiting
   for the scheduled report — this is separate from that report, which
   still posts one combined tagged list in the group on its own schedule.
+  Names come from WhatsApp when available; a member may briefly show as
+  a raw number instead of a name if WhatsApp's privacy "LID" system has
+  anonymized them and they haven't posted a message yet — this resolves
+  itself once they do, or once WhatsApp shares more about them.
 - **Birthdays** — add/remove entries (name, phone, month, day, optional
   photo) for the daily birthday check, and edit the message itself
   (use `{name}` where the person's name should go). Editing it here

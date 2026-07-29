@@ -531,7 +531,7 @@ function buildIdleRow(m) {
   const quiet = m.daysIdle === null ? 'no messages seen yet' : `${m.daysIdle} day(s)`;
   return `
   <tr>
-    <td>${escapeHtml(m.name || m.jid)}</td>
+    <td>${escapeHtml(m.name || m.jid.split('@')[0])}</td>
     <td>${quiet}</td>
     <td>
       <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">

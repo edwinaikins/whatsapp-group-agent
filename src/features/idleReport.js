@@ -18,11 +18,25 @@ function applySchedule(cronExpr) {
 
 async function refreshMembership(sock, groupJid) {
   const metadata = await sock.groupMetadata(groupJid);
-  const participants = metadata.participants.map((p) => ({
-    jid: p.id,
-    name: p.name || p.notify || p.id.split('@')[0],
-    admin: !!p.admin,
-  }));
+  const participants = metadata.participants.map((p) => {
+    // Prefer an actual WhatsApp name Baileys already knows (push name,
+    // then verified/business name), then a resolved phone number if
+    // this participant's `id` is an opaque @lid id rather than a real
+    // phone-based JID. If none of those are available, pass null
+    // instead of falling back to the raw JID/LID digits —
+    // syncMembershipList() then keeps whatever name we already learned
+    // for them (e.g. from a message they sent) instead of overwriting
+    // it with a meaningless number. Some group members WhatsApp's
+    // privacy "LID" system anonymizes may never resolve to anything
+    // better than a raw number until they post — that's a known
+    // limitation of WhatsApp/Baileys, not something fixable here.
+    const resolvedPhone = p.phoneNumber ? p.phoneNumber.split('@')[0] : null;
+    return {
+      jid: p.id,
+      name: p.name || p.notify || p.verifiedName || resolvedPhone || null,
+      admin: !!p.admin,
+    };
+  });
   syncMembershipList(participants);
   return participants;
 }
