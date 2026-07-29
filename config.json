@@ -1,0 +1,42 @@
+{
+  "titleRotation": {
+    "enabled": true,
+    "cron": "0 6 * * 1",
+    "comment": "Default: every Monday at 6am. Cron is min hour dom month dow.",
+    "titles": [
+      "🌟 Welcome Week — Say Hi!",
+      "🔥 Grind Week",
+      "🎯 Focus & Follow-Through",
+      "🎉 Celebration Week",
+      "🌱 Growth Week"
+    ]
+  },
+  "dailyActivity": {
+    "enabled": true,
+    "cron": "0 9 * * *",
+    "comment": "Default: every day at 9am.",
+    "prompts": [
+      "🌅 Good morning! Today's activity: share one thing you're grateful for.",
+      "💡 Today's prompt: what's one win from this week so far?",
+      "📸 Photo challenge: post a picture of your current view.",
+      "🎯 Check-in: what's the one thing you want to get done today?",
+      "🗣️ Discussion: what's something you learned recently that surprised you?",
+      "🎶 Song of the day: share a track you've been playing on repeat.",
+      "🙌 Shout-out: tag someone in the group who's been doing great lately."
+    ]
+  },
+  "idleReport": {
+    "enabled": true,
+    "cron": "0 8 * * 1",
+    "comment": "Default: every Monday at 8am.",
+    "idleAfterDays": 7,
+    "postInGroup": true
+  },
+  "birthdays": {
+    "enabled": true,
+    "cron": "0 7 * * *",
+    "comment": "Default: checked every day at 7am.",
+    "csvPath": "data/birthdays.csv",
+    "messageTemplate": "🎉🎂 Happy Birthday, {name}! Wishing you an amazing year ahead. 🥳🎈"
+  }
+}
