@@ -47,7 +47,7 @@
   }
   section.panel h2 { font-size: 15px; margin: 0 0 14px; font-weight: 600; }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
-  input[type=text], input[type=number], input[type=tel], input[type=datetime-local], textarea {
+  input[type=text], input[type=number], input[type=tel], input[type=time], input[type=datetime-local], textarea {
     background: #10131a;
     border: 1px solid var(--panel-border);
     color: var(--text);
@@ -55,6 +55,11 @@
     padding: 8px 10px;
     font-size: 13px;
     font-family: inherit;
+    /* Without this, the browser draws the calendar/clock picker icon
+       (and the picker popup itself) in its light-mode colors by
+       default, which is a dark icon on this dark background — nearly
+       invisible. This tells it to use dark-appropriate chrome instead. */
+    color-scheme: dark;
   }
   textarea { width: 100%; min-height: 60px; resize: vertical; }
   input[type=file] { color: var(--muted); font-size: 12px; }
