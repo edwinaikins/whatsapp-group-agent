@@ -143,6 +143,24 @@ function getMemberByJid(jid) {
   return db.prepare('SELECT * FROM members WHERE jid = ?').get(jid);
 }
 
+// Fed by the bot's `contacts.upsert` / `contacts.update` listeners in
+// index.js — these fire whenever WhatsApp's own account-level contact
+// sync learns (or updates) something about a JID, independent of
+// whether that person has ever posted in the group or whether a
+// groupMetadata() call resolved anything for them. Deliberately an
+// UPDATE-only, not an upsert: contact events cover the bot's whole
+// address book, not just this group's members, so a JID that isn't
+// already a tracked member (an existing row) is simply not relevant
+// here and shouldn't create one. COALESCE-safe for the same reason as
+// everywhere else — a contact event with nothing new never overwrites
+// something already known.
+function updateMemberContactInfo(jid, { name, phone }) {
+  if (!name && !phone) return;
+  db.prepare(
+    'UPDATE members SET name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE jid = ?'
+  ).run(name || null, phone || null, jid);
+}
+
 function getIdleMembers(idleAfterDays) {
   const cutoff = Date.now() - idleAfterDays * 24 * 60 * 60 * 1000;
   return db
@@ -325,6 +343,7 @@ module.exports = {
   getIdleMembers,
   getActiveMembers,
   getMemberByJid,
+  updateMemberContactInfo,
   getKV,
   setKV,
   listTitles,
