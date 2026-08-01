@@ -233,11 +233,13 @@ From there you can:
   who's currently **inactive** (name and how many days they've been
   quiet) and who's currently **active** (name and when they last
   posted), instead of only finding out about the idle side from the
-  weekly group post. Each inactive person has their own "Send custom"
-  (type something specific to them) and "Send default" (uses the saved
-  nudge message below, with `{name}` filled in) buttons, so you can
-  follow up one-on-one without waiting for the scheduled report — this
-  is separate from that report, which still posts one combined tagged
+  weekly group post. Each row also shows a **Contact** column with
+  that person's phone number, when WhatsApp has actually made one
+  available. Each inactive person has their own "Send custom" (type
+  something specific to them) and "Send default" (uses the saved nudge
+  message below, with `{name}` filled in) buttons, so you can follow
+  up one-on-one without waiting for the scheduled report — this is
+  separate from that report, which still posts one combined tagged
   list in the group on its own schedule.
 
   Names come from WhatsApp when available; a member may briefly show as
@@ -248,7 +250,11 @@ From there you can:
   from the bot phone's own contact book, so anyone not saved there has
   to fall back to their self-set WhatsApp display name (if their
   privacy settings even share that) or, failing that, nothing at all
-  until they post.
+  until they post. The same "LID" anonymization affects the Contact
+  column for the same reason: a normal WhatsApp JID carries a real
+  phone number, but an opaque `@lid` one doesn't, so it can show
+  "unknown" even for someone who's active, until WhatsApp resolves it
+  or you save them as a contact.
 - **Birthdays** — add/remove entries (name, phone, month, day, optional
   photo) for the daily birthday check, and edit the message itself
   (use `{name}` where the person's name should go). Editing it here

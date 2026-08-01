@@ -241,14 +241,14 @@
     <h3 style="font-size:13px; color:var(--muted); margin:4px 0 8px; font-weight:600;">Inactive</h3>
     <div class="table-scroll">
       <table id="idle-table">
-        <thead><tr><th>Name</th><th>Quiet for</th><th>Message</th></tr></thead>
+        <thead><tr><th>Name</th><th>Contact</th><th>Quiet for</th><th>Message</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
     <h3 style="font-size:13px; color:var(--muted); margin:16px 0 8px; font-weight:600;">Active</h3>
     <div class="table-scroll">
       <table id="active-table">
-        <thead><tr><th>Name</th><th>Last active</th></tr></thead>
+        <thead><tr><th>Name</th><th>Contact</th><th>Last active</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -540,11 +540,21 @@ async function saveIdleMessageTemplate() {
   toast(template.includes('{name}') ? 'Default message saved' : 'Saved — note: without {name}, the person\'s name won\'t appear');
 }
 
+// A member's phone is only known when WhatsApp has actually handed it
+// over (a real @s.whatsapp.net JID, or — sometimes — a resolved number
+// for an @lid participant). When it hasn't, there's nothing to show;
+// saving that person as a contact on the bot's phone is what usually
+// unlocks it.
+function formatContact(m) {
+  return m.phone ? escapeHtml(m.phone) : '<span class="muted">unknown</span>';
+}
+
 function buildIdleRow(m) {
   const quiet = m.daysIdle === null ? 'no messages seen yet' : `${m.daysIdle} day(s)`;
   return `
   <tr>
     <td>${escapeHtml(m.name || m.jid.split('@')[0])}</td>
+    <td>${formatContact(m)}</td>
     <td>${quiet}</td>
     <td>
       <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
@@ -561,6 +571,7 @@ function buildActiveRow(m) {
   return `
   <tr>
     <td>${escapeHtml(m.name || m.jid.split('@')[0])}</td>
+    <td>${formatContact(m)}</td>
     <td>${lastActive}</td>
   </tr>`;
 }
@@ -571,12 +582,12 @@ async function loadMemberActivity() {
   const idleBody = document.querySelector('#idle-table tbody');
   idleBody.innerHTML = idle.length
     ? idle.map(buildIdleRow).join('')
-    : `<tr><td colspan="3" class="muted">No one's idle right now 🎉</td></tr>`;
+    : `<tr><td colspan="4" class="muted">No one's idle right now 🎉</td></tr>`;
 
   const activeBody = document.querySelector('#active-table tbody');
   activeBody.innerHTML = active.length
     ? active.map(buildActiveRow).join('')
-    : `<tr><td colspan="2" class="muted">No one's active within the idle window yet.</td></tr>`;
+    : `<tr><td colspan="3" class="muted">No one's active within the idle window yet.</td></tr>`;
 }
 
 async function sendIdleMessage(jid, useDefault, btn) {

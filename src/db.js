@@ -74,40 +74,58 @@ if (!scheduledPostsColumns.includes('mention_phones')) {
   db.exec('ALTER TABLE scheduled_posts ADD COLUMN mention_phones TEXT');
 }
 
-// ---- Member / idle tracking (unchanged) ----
+const membersColumns = db.prepare('PRAGMA table_info(members)').all().map((c) => c.name);
+if (!membersColumns.includes('phone')) {
+  db.exec('ALTER TABLE members ADD COLUMN phone TEXT');
+}
+
+// ---- Member / idle tracking ----
+
+// A real phone-based JID (@s.whatsapp.net) has the dialable number right
+// in it. An @lid JID's `id` is an opaque WhatsApp-privacy identifier, NOT
+// a phone number — there's no reliable way to derive one from it alone
+// (see the phoneNumber-from-metadata handling in idleReport.js for the
+// one place a real number can sometimes still be recovered for @lid
+// participants). Returns null rather than guessing.
+function phoneFromJid(jid) {
+  if (jid && jid.endsWith('@s.whatsapp.net')) return jid.split('@')[0];
+  return null;
+}
 
 function upsertMemberSeen(jid, name, whenMs) {
+  const phone = phoneFromJid(jid);
   const existing = db.prepare('SELECT jid FROM members WHERE jid = ?').get(jid);
   if (existing) {
     db.prepare(
-      'UPDATE members SET last_seen_at = ?, name = COALESCE(?, name) WHERE jid = ?'
-    ).run(whenMs, name || null, jid);
+      'UPDATE members SET last_seen_at = ?, name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE jid = ?'
+    ).run(whenMs, name || null, phone, jid);
   } else {
     db.prepare(
-      'INSERT INTO members (jid, name, last_seen_at, joined_at) VALUES (?, ?, ?, ?)'
-    ).run(jid, name || jid, whenMs, whenMs);
+      'INSERT INTO members (jid, name, phone, last_seen_at, joined_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(jid, name || null, phone, whenMs, whenMs);
   }
 }
 
 function syncMembershipList(participants) {
-  // participants: [{ jid, name, admin }] — name may be null when
-  // WhatsApp didn't give us anything better for this participant right
-  // now (most commonly an @lid participant Baileys hasn't resolved to a
-  // phone number or push name). COALESCE on conflict means a sync with
-  // no name never overwrites a name we already learned some other way
-  // (e.g. from a message they sent) — only a real name replaces a real
-  // name.
+  // participants: [{ jid, name, phone, admin }] — name/phone may be null
+  // when WhatsApp didn't give us anything better for this participant
+  // right now (most commonly an @lid participant Baileys hasn't resolved
+  // to a phone number or push name). COALESCE on conflict means a sync
+  // with nothing new never overwrites a name/phone we already learned
+  // some other way (e.g. from a message they sent) — only real data
+  // replaces real data.
   const now = Date.now();
   const upsert = db.prepare(`
-    INSERT INTO members (jid, name, joined_at, is_admin)
-    VALUES (@jid, @name, @now, @admin)
+    INSERT INTO members (jid, name, phone, joined_at, is_admin)
+    VALUES (@jid, @name, @phone, @now, @admin)
     ON CONFLICT(jid) DO UPDATE SET
       name = COALESCE(excluded.name, members.name),
+      phone = COALESCE(excluded.phone, members.phone),
       is_admin = excluded.is_admin
   `);
   const tx = db.transaction((rows) => {
     for (const p of rows) {
-      upsert.run({ jid: p.jid, name: p.name ?? null, now, admin: p.admin ? 1 : 0 });
+      upsert.run({ jid: p.jid, name: p.name ?? null, phone: p.phone ?? null, now, admin: p.admin ? 1 : 0 });
     }
   });
   tx(participants);
@@ -129,7 +147,7 @@ function getIdleMembers(idleAfterDays) {
   const cutoff = Date.now() - idleAfterDays * 24 * 60 * 60 * 1000;
   return db
     .prepare(
-      'SELECT jid, name, last_seen_at, joined_at FROM members WHERE is_admin = 0 AND (last_seen_at IS NULL OR last_seen_at < ?) ORDER BY COALESCE(last_seen_at, joined_at) ASC'
+      'SELECT jid, name, phone, last_seen_at, joined_at FROM members WHERE is_admin = 0 AND (last_seen_at IS NULL OR last_seen_at < ?) ORDER BY COALESCE(last_seen_at, joined_at) ASC'
     )
     .all(cutoff);
 }
@@ -141,7 +159,7 @@ function getActiveMembers(idleAfterDays) {
   const cutoff = Date.now() - idleAfterDays * 24 * 60 * 60 * 1000;
   return db
     .prepare(
-      'SELECT jid, name, last_seen_at, joined_at FROM members WHERE is_admin = 0 AND last_seen_at IS NOT NULL AND last_seen_at >= ? ORDER BY last_seen_at DESC'
+      'SELECT jid, name, phone, last_seen_at, joined_at FROM members WHERE is_admin = 0 AND last_seen_at IS NOT NULL AND last_seen_at >= ? ORDER BY last_seen_at DESC'
     )
     .all(cutoff);
 }
@@ -303,6 +321,7 @@ module.exports = {
   db,
   upsertMemberSeen,
   syncMembershipList,
+  phoneFromJid,
   getIdleMembers,
   getActiveMembers,
   getMemberByJid,

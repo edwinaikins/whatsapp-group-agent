@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const { getIdleMembers, syncMembershipList, getKV, setKV } = require('../db');
+const { getIdleMembers, syncMembershipList, getKV, setKV, phoneFromJid } = require('../db');
 
 // Same pattern as titleRotator.js / dailyActivity.js — the cron
 // expression lives in the kv store once someone edits the schedule from
@@ -34,6 +34,11 @@ async function refreshMembership(sock, groupJid) {
     return {
       jid: p.id,
       name: p.name || p.notify || p.verifiedName || resolvedPhone || null,
+      // Prefer WhatsApp's own resolved phone number for this participant
+      // (only available some of the time for @lid participants); fall
+      // back to pulling it straight out of the JID, which only works
+      // when the JID itself is a real phone-based one.
+      phone: resolvedPhone || phoneFromJid(p.id),
       admin: !!p.admin,
     };
   });
