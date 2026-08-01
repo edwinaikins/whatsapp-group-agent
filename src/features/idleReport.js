@@ -16,8 +16,24 @@ function applySchedule(cronExpr) {
   console.log(`[idleReport] Scheduled with cron "${cronExpr}" (${boundTimezone})`);
 }
 
+// TEMP DIAGNOSTIC — set to true to log exactly what Baileys hands back
+// for each participant on the next refresh (raw id, phoneNumber, name,
+// notify, verifiedName). Only logs, doesn't change any behavior. Meant
+// to answer one question: even with contacts saved on the bot's phone,
+// is WhatsApp/Baileys actually giving us a phoneNumber for @lid
+// participants, or is it consistently empty? Flip back to false (or
+// delete this block and the two log lines below) once that's answered.
+const DIAG_LOG_MEMBERSHIP = true;
+
 async function refreshMembership(sock, groupJid) {
   const metadata = await sock.groupMetadata(groupJid);
+  if (DIAG_LOG_MEMBERSHIP) {
+    const lidCount = metadata.participants.filter((p) => p.id.endsWith('@lid')).length;
+    const withPhoneNumber = metadata.participants.filter((p) => !!p.phoneNumber).length;
+    console.log(
+      `[idleReport:diag] ${metadata.participants.length} participants — ${lidCount} are @lid, ${withPhoneNumber} have phoneNumber set`
+    );
+  }
   const participants = metadata.participants.map((p) => {
     // Prefer an actual WhatsApp name Baileys already knows (push name,
     // then verified/business name), then a resolved phone number if
@@ -31,6 +47,11 @@ async function refreshMembership(sock, groupJid) {
     // better than a raw number until they post — that's a known
     // limitation of WhatsApp/Baileys, not something fixable here.
     const resolvedPhone = p.phoneNumber ? p.phoneNumber.split('@')[0] : null;
+    if (DIAG_LOG_MEMBERSHIP) {
+      console.log(
+        `[idleReport:diag] id=${p.id} phoneNumber=${p.phoneNumber || 'none'} name=${p.name || 'none'} notify=${p.notify || 'none'} verifiedName=${p.verifiedName || 'none'}`
+      );
+    }
     return {
       jid: p.id,
       name: p.name || p.notify || p.verifiedName || resolvedPhone || null,
