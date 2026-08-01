@@ -161,23 +161,30 @@ function updateMemberContactInfo(jid, { name, phone }) {
   ).run(name || null, phone || null, jid);
 }
 
+// Admins are included here deliberately (as of this query) — earlier
+// versions excluded them on the assumption you wouldn't want to nudge
+// an admin about going quiet, but that also meant they never showed up
+// on the Active list either. Now everyone in the group, admin or not,
+// is covered by exactly one of getIdleMembers/getActiveMembers —
+// including being tagged in the automated weekly idle-report post if
+// an admin goes quiet too.
 function getIdleMembers(idleAfterDays) {
   const cutoff = Date.now() - idleAfterDays * 24 * 60 * 60 * 1000;
   return db
     .prepare(
-      'SELECT jid, name, phone, last_seen_at, joined_at FROM members WHERE is_admin = 0 AND (last_seen_at IS NULL OR last_seen_at < ?) ORDER BY COALESCE(last_seen_at, joined_at) ASC'
+      'SELECT jid, name, phone, last_seen_at, joined_at, is_admin FROM members WHERE (last_seen_at IS NULL OR last_seen_at < ?) ORDER BY COALESCE(last_seen_at, joined_at) ASC'
     )
     .all(cutoff);
 }
 
-// The mirror image of getIdleMembers — non-admins who HAVE posted
-// within the idle window, most-recently-active first. Together the two
-// functions partition every non-admin member into exactly one list.
+// The mirror image of getIdleMembers — everyone who HAS posted within
+// the idle window, most-recently-active first. Together the two
+// functions partition every tracked member into exactly one list.
 function getActiveMembers(idleAfterDays) {
   const cutoff = Date.now() - idleAfterDays * 24 * 60 * 60 * 1000;
   return db
     .prepare(
-      'SELECT jid, name, phone, last_seen_at, joined_at FROM members WHERE is_admin = 0 AND last_seen_at IS NOT NULL AND last_seen_at >= ? ORDER BY last_seen_at DESC'
+      'SELECT jid, name, phone, last_seen_at, joined_at, is_admin FROM members WHERE last_seen_at IS NOT NULL AND last_seen_at >= ? ORDER BY last_seen_at DESC'
     )
     .all(cutoff);
 }
