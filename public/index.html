@@ -214,7 +214,7 @@
   </section>
 
   <section class="panel">
-    <h2>Inactive members</h2>
+    <h2>Member activity</h2>
     <div class="row">
       <label class="muted" style="min-width:40px;">Runs:</label>
       <select id="idle-cron-dow">
@@ -238,9 +238,17 @@
       <button onclick="saveIdleMessageTemplate()">Save default message</button>
       <span class="muted">Used by the "Send default" button below when you don't type a custom message.</span>
     </div>
+    <h3 style="font-size:13px; color:var(--muted); margin:4px 0 8px; font-weight:600;">Inactive</h3>
     <div class="table-scroll">
       <table id="idle-table">
         <thead><tr><th>Name</th><th>Quiet for</th><th>Message</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <h3 style="font-size:13px; color:var(--muted); margin:16px 0 8px; font-weight:600;">Active</h3>
+    <div class="table-scroll">
+      <table id="active-table">
+        <thead><tr><th>Name</th><th>Last active</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -548,14 +556,27 @@ function buildIdleRow(m) {
   </tr>`;
 }
 
-async function loadIdleMembers() {
-  const rows = await api('/api/idle-members');
-  const tbody = document.querySelector('#idle-table tbody');
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="3" class="muted">No one's idle right now 🎉</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = rows.map(buildIdleRow).join('');
+function buildActiveRow(m) {
+  const lastActive = m.daysAgo <= 0 ? 'today' : m.daysAgo === 1 ? 'yesterday' : `${m.daysAgo} day(s) ago`;
+  return `
+  <tr>
+    <td>${escapeHtml(m.name || m.jid.split('@')[0])}</td>
+    <td>${lastActive}</td>
+  </tr>`;
+}
+
+async function loadMemberActivity() {
+  const { idle, active } = await api('/api/member-activity');
+
+  const idleBody = document.querySelector('#idle-table tbody');
+  idleBody.innerHTML = idle.length
+    ? idle.map(buildIdleRow).join('')
+    : `<tr><td colspan="3" class="muted">No one's idle right now 🎉</td></tr>`;
+
+  const activeBody = document.querySelector('#active-table tbody');
+  activeBody.innerHTML = active.length
+    ? active.map(buildActiveRow).join('')
+    : `<tr><td colspan="2" class="muted">No one's active within the idle window yet.</td></tr>`;
 }
 
 async function sendIdleMessage(jid, useDefault, btn) {
@@ -738,7 +759,7 @@ function refreshAll() {
   loadTitles();
   loadPrompts();
   loadIdleMessageTemplate();
-  loadIdleMembers();
+  loadMemberActivity();
   loadBdayTemplate();
   loadBirthdays();
   loadPosts();

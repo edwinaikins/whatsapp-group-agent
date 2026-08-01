@@ -228,19 +228,27 @@ From there you can:
   and restarting for this one.
 - **Daily activity prompts** — add/remove/reorder prompts, optionally
   with an image attached to each, and set what time of day they post.
-- **Inactive members** — set when the idle check runs (every day, or a
-  specific day of the week, at a time you pick), and see the actual
-  list of who's currently idle (name and how many days they've been
-  quiet) instead of only finding out from the weekly group post. Each
-  person has their own "Send custom" (type something specific to them)
-  and "Send default" (uses the saved nudge message below, with `{name}`
-  filled in) buttons, so you can follow up one-on-one without waiting
-  for the scheduled report — this is separate from that report, which
-  still posts one combined tagged list in the group on its own schedule.
+- **Member activity** — set when the idle check runs (every day, or a
+  specific day of the week, at a time you pick), then see two lists:
+  who's currently **inactive** (name and how many days they've been
+  quiet) and who's currently **active** (name and when they last
+  posted), instead of only finding out about the idle side from the
+  weekly group post. Each inactive person has their own "Send custom"
+  (type something specific to them) and "Send default" (uses the saved
+  nudge message below, with `{name}` filled in) buttons, so you can
+  follow up one-on-one without waiting for the scheduled report — this
+  is separate from that report, which still posts one combined tagged
+  list in the group on its own schedule.
+
   Names come from WhatsApp when available; a member may briefly show as
   a raw number instead of a name if WhatsApp's privacy "LID" system has
-  anonymized them and they haven't posted a message yet — this resolves
-  itself once they do, or once WhatsApp shares more about them.
+  anonymized them and they haven't posted a message yet. Saving that
+  person's number as a contact on the bot's phone often fixes this
+  immediately — WhatsApp's `name` field for a participant is sourced
+  from the bot phone's own contact book, so anyone not saved there has
+  to fall back to their self-set WhatsApp display name (if their
+  privacy settings even share that) or, failing that, nothing at all
+  until they post.
 - **Birthdays** — add/remove entries (name, phone, month, day, optional
   photo) for the daily birthday check, and edit the message itself
   (use `{name}` where the person's name should go). Editing it here

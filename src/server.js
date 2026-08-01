@@ -26,6 +26,7 @@ const {
   deleteScheduledPost,
   rescheduleScheduledPost,
   getIdleMembers,
+  getActiveMembers,
   getMemberByJid,
   getKV,
   setKV,
@@ -324,23 +325,27 @@ function start(sock, cfg) {
     res.json({ ok: true, cron: cronExpr });
   });
 
-  // ---- Inactive members ----
-  // Refreshes membership from WhatsApp first so the list reflects who's
-  // actually still in the group (matches the same refresh the weekly
-  // idle report itself does), then returns everyone past the idle
-  // threshold with how many days they've been quiet.
-  app.get('/api/idle-members', async (req, res) => {
+  // ---- Member activity (inactive + active) ----
+  // Refreshes membership from WhatsApp first so both lists reflect
+  // who's actually still in the group (matches the same refresh the
+  // weekly idle report itself does) — done once here rather than once
+  // per list, since it's a live round-trip to WhatsApp.
+  app.get('/api/member-activity', async (req, res) => {
     try {
       await idleReport.refreshMembership(sock, cfg.groupJid);
     } catch (err) {
-      console.error('[server] Failed to refresh membership before idle list:', err.message);
+      console.error('[server] Failed to refresh membership before member-activity list:', err.message);
     }
     const now = Date.now();
     const idle = getIdleMembers(cfg.idleReport.idleAfterDays).map((m) => ({
       ...m,
       daysIdle: m.last_seen_at ? Math.floor((now - m.last_seen_at) / (24 * 60 * 60 * 1000)) : null,
     }));
-    res.json(idle);
+    const active = getActiveMembers(cfg.idleReport.idleAfterDays).map((m) => ({
+      ...m,
+      daysAgo: Math.floor((now - m.last_seen_at) / (24 * 60 * 60 * 1000)),
+    }));
+    res.json({ idle, active });
   });
 
   app.get('/api/settings/idle-message', (req, res) => {

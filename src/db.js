@@ -134,6 +134,18 @@ function getIdleMembers(idleAfterDays) {
     .all(cutoff);
 }
 
+// The mirror image of getIdleMembers — non-admins who HAVE posted
+// within the idle window, most-recently-active first. Together the two
+// functions partition every non-admin member into exactly one list.
+function getActiveMembers(idleAfterDays) {
+  const cutoff = Date.now() - idleAfterDays * 24 * 60 * 60 * 1000;
+  return db
+    .prepare(
+      'SELECT jid, name, last_seen_at, joined_at FROM members WHERE is_admin = 0 AND last_seen_at IS NOT NULL AND last_seen_at >= ? ORDER BY last_seen_at DESC'
+    )
+    .all(cutoff);
+}
+
 function getKV(key, fallback = null) {
   const row = db.prepare('SELECT value FROM kv WHERE key = ?').get(key);
   return row ? row.value : fallback;
@@ -292,6 +304,7 @@ module.exports = {
   upsertMemberSeen,
   syncMembershipList,
   getIdleMembers,
+  getActiveMembers,
   getMemberByJid,
   getKV,
   setKV,
