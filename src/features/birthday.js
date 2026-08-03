@@ -28,7 +28,17 @@ function register(sock, cfg) {
         const name = rec.name || 'friend';
         const phone = String(rec.phone || '').replace(/\D/g, '');
         const jid = phone ? `${phone}@s.whatsapp.net` : undefined;
-        const text = template.replace('{name}', name);
+        // WhatsApp only renders a mention as a visible, tappable @tag
+        // when the message text itself contains the literal
+        // "@<number>" for that JID — passing `mentions` alone resolves
+        // the tag internally but shows nothing highlighted. Prepending
+        // it here (rather than relying on the template to include a
+        // placeholder) means it always renders regardless of how the
+        // template gets edited from the dashboard. No phone on file
+        // means no way to tag this person at all — falls back to
+        // plain text, same as before.
+        const mentionTag = jid ? `@${phone} ` : '';
+        const text = mentionTag + template.replace('{name}', name);
         const mentions = jid ? [jid] : undefined;
 
         const photoFile = rec.photo_path ? path.join(UPLOADS_DIR, rec.photo_path) : null;

@@ -361,10 +361,19 @@ function start(sock, cfg) {
     res.json({ ok: true });
   });
 
-  // Sends a direct message to one idle member — either the text the
-  // admin typed for that person, or (if left blank) the saved default
-  // nudge template with {name} filled in. This is separate from the
-  // weekly group report, which still posts one combined tagged list.
+  // Posts a check-up message IN THE GROUP that tags one idle member —
+  // either the text the admin typed for that person, or (if left
+  // blank) the saved default nudge template with {name} filled in.
+  // Posts to the group with a visible @-mention rather than DMing the
+  // member privately. The mention tag is prepended here rather than
+  // left to the template, since WhatsApp only renders a mention as a
+  // visible, tappable @tag when the message text itself contains the
+  // literal "@<number>" for that JID — just passing `mentions` without
+  // it resolves the tag internally but shows nothing highlighted.
+  // Prepending it ourselves means it always renders regardless of how
+  // the template is edited from the dashboard. This is separate from
+  // the weekly automated group report, which posts one combined tagged
+  // list for everyone idle at once instead of one at a time.
   app.post('/api/idle-members/:jid/message', async (req, res) => {
     try {
       const jid = req.params.jid;
@@ -378,7 +387,8 @@ function start(sock, cfg) {
         text = template.replace('{name}', member.name || 'there');
       }
 
-      await sock.sendMessage(jid, { text });
+      const mentionTag = `@${jid.split('@')[0]}`;
+      await sock.sendMessage(cfg.groupJid, { text: `${mentionTag} ${text}`, mentions: [jid] });
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
