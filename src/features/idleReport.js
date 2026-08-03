@@ -18,11 +18,14 @@ function applySchedule(cronExpr) {
 
 // TEMP DIAGNOSTIC — set to true to log exactly what Baileys hands back
 // for each participant on the next refresh (raw id, phoneNumber, name,
-// notify, verifiedName). Only logs, doesn't change any behavior. Meant
-// to answer one question: even with contacts saved on the bot's phone,
-// is WhatsApp/Baileys actually giving us a phoneNumber for @lid
-// participants, or is it consistently empty? Flip back to false (or
-// delete this block and the two log lines below) once that's answered.
+// notify, verifiedName). Only logs, doesn't change any behavior.
+// Originally added to confirm that Baileys 6.7.9 never populates
+// phoneNumber for @lid participants at all (confirmed — it doesn't;
+// the field didn't exist in that version's Contact type). Left on
+// post-upgrade to confirm the opposite: that Baileys 7's restructured
+// Contact type (which adds a real phoneNumber field) is actually
+// populating it now. Flip back to false (or delete this block and the
+// two log lines below) once that's confirmed.
 const DIAG_LOG_MEMBERSHIP = true;
 
 async function refreshMembership(sock, groupJid) {
@@ -42,10 +45,11 @@ async function refreshMembership(sock, groupJid) {
     // instead of falling back to the raw JID/LID digits —
     // syncMembershipList() then keeps whatever name we already learned
     // for them (e.g. from a message they sent) instead of overwriting
-    // it with a meaningless number. Some group members WhatsApp's
-    // privacy "LID" system anonymizes may never resolve to anything
-    // better than a raw number until they post — that's a known
-    // limitation of WhatsApp/Baileys, not something fixable here.
+    // it with a meaningless number. As of Baileys 7, phoneNumber should
+    // actually be populated here for most @lid participants (it never
+    // was in 6.7.9 — the field didn't exist yet); a participant with
+    // neither a name nor a resolvable phone number is now the rare
+    // case rather than the norm.
     const resolvedPhone = p.phoneNumber ? p.phoneNumber.split('@')[0] : null;
     if (DIAG_LOG_MEMBERSHIP) {
       console.log(

@@ -1,14 +1,25 @@
 const path = require('path');
 const pino = require('pino');
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-} = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 
 const AUTH_DIR = path.join(__dirname, '..', 'auth_state');
+
+// Baileys 7.x (package renamed from @whiskeysockets/baileys to plain
+// "baileys") is published ESM-only — a bare require() of it throws
+// ERR_REQUIRE_ESM. The rest of this project stays CommonJS (no reason
+// to convert every file just for one dependency), so we bridge with a
+// dynamic import() instead. Node caches the resolved module namespace
+// after the first import, so calling this again on every reconnect
+// doesn't re-run the module's top-level code.
+async function loadBaileys() {
+  const baileys = await import('baileys');
+  return {
+    makeWASocket: baileys.default,
+    useMultiFileAuthState: baileys.useMultiFileAuthState,
+    DisconnectReason: baileys.DisconnectReason,
+    fetchLatestBaileysVersion: baileys.fetchLatestBaileysVersion,
+  };
+}
 
 /**
  * Connects to WhatsApp and returns a stable proxy object that always
@@ -31,6 +42,8 @@ const AUTH_DIR = path.join(__dirname, '..', 'auth_state');
  */
 async function connect(botPhoneNumber, { onSocketCreated } = {}) {
   let currentSock = null;
+  const { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } =
+    await loadBaileys();
 
   const proxy = new Proxy({}, {
     get(_target, prop) {
