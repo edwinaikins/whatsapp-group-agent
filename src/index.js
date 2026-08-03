@@ -1,6 +1,6 @@
 const { loadConfig } = require('./config');
 const { connect } = require('./whatsapp');
-const { upsertMemberSeen, phoneFromJid, updateMemberContactInfo } = require('./db');
+const { upsertMemberSeen, phoneFromJid, updateMemberContactInfo, upsertContactInfo } = require('./db');
 const server = require('./server');
 const titleRotator = require('./features/titleRotator');
 const dailyActivity = require('./features/dailyActivity');
@@ -79,7 +79,16 @@ async function main() {
               `[contacts:diag] id=${c.id} phoneNumber=${c.phoneNumber || 'none'} name=${c.name || 'none'} notify=${c.notify || 'none'} verifiedName=${c.verifiedName || 'none'}`
             );
           }
-          if (name || phone) updateMemberContactInfo(c.id, { name, phone });
+          if (!name && !phone) continue;
+          // Always cache it here regardless of group membership — this
+          // event fires for the bot's whole address book, and often
+          // fires before a never-posted group member's row even
+          // exists. Also best-effort update the members row directly
+          // (if it already exists) so someone already tracked gets the
+          // fresher name immediately, without waiting for the next
+          // refreshMembership() call to consult the cache.
+          upsertContactInfo(c.id, { name, phone });
+          updateMemberContactInfo(c.id, { name, phone });
         }
       };
       freshSock.ev.on('contacts.upsert', handleContactSync);

@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const { getIdleMembers, syncMembershipList, getKV, setKV, phoneFromJid } = require('../db');
+const { getIdleMembers, syncMembershipList, getKV, setKV, phoneFromJid, getContactInfo } = require('../db');
 
 // Same pattern as titleRotator.js / dailyActivity.js — the cron
 // expression lives in the kv store once someone edits the schedule from
@@ -39,9 +39,13 @@ async function refreshMembership(sock, groupJid) {
   }
   const participants = metadata.participants.map((p) => {
     // Prefer an actual WhatsApp name Baileys already knows (push name,
-    // then verified/business name). Deliberately do NOT fall back to
-    // the resolved phone number here, even though it's usually
-    // available now — the dashboard has its own dedicated Contact
+    // then verified/business name), then whatever the contacts-sync
+    // cache learned about this JID previously (see upsertContactInfo()
+    // in db.js — it exists specifically because contacts.upsert can
+    // fire before this participant's members row does, so the name it
+    // carried would otherwise be lost by the time this ever runs).
+    // Deliberately do NOT fall back further to the resolved phone
+    // number itself — the dashboard has its own dedicated Contact
     // column for that, and this `name` value gets upserted into
     // members.name via a COALESCE that treats non-null as "use this".
     // Falling back to resolvedPhone would mean every dashboard load
@@ -50,19 +54,21 @@ async function refreshMembership(sock, groupJid) {
     // contacts.upsert with a plain digit string. Passing null instead
     // lets that COALESCE leave the real name alone.
     const resolvedPhone = p.phoneNumber ? p.phoneNumber.split('@')[0] : null;
+    const cached = getContactInfo(p.id);
     if (DIAG_LOG_MEMBERSHIP) {
       console.log(
-        `[idleReport:diag] id=${p.id} phoneNumber=${p.phoneNumber || 'none'} name=${p.name || 'none'} notify=${p.notify || 'none'} verifiedName=${p.verifiedName || 'none'}`
+        `[idleReport:diag] id=${p.id} phoneNumber=${p.phoneNumber || 'none'} name=${p.name || 'none'} notify=${p.notify || 'none'} verifiedName=${p.verifiedName || 'none'} cachedName=${(cached && cached.name) || 'none'}`
       );
     }
     return {
       jid: p.id,
-      name: p.name || p.notify || p.verifiedName || null,
+      name: p.name || p.notify || p.verifiedName || (cached && cached.name) || null,
       // Prefer WhatsApp's own resolved phone number for this participant
       // (only available some of the time for @lid participants); fall
-      // back to pulling it straight out of the JID, which only works
-      // when the JID itself is a real phone-based one.
-      phone: resolvedPhone || phoneFromJid(p.id),
+      // back to the contacts-sync cache, then to pulling it straight
+      // out of the JID, which only works when the JID itself is a real
+      // phone-based one.
+      phone: resolvedPhone || (cached && cached.phone) || phoneFromJid(p.id),
       admin: !!p.admin,
     };
   });

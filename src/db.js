@@ -22,6 +22,13 @@ db.exec(`
     value TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS contacts (
+    jid TEXT PRIMARY KEY,
+    name TEXT,
+    phone TEXT,
+    updated_at INTEGER
+  );
+
   CREATE TABLE IF NOT EXISTS titles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT NOT NULL,
@@ -159,6 +166,34 @@ function updateMemberContactInfo(jid, { name, phone }) {
   db.prepare(
     'UPDATE members SET name = COALESCE(?, name), phone = COALESCE(?, phone) WHERE jid = ?'
   ).run(name || null, phone || null, jid);
+}
+
+// Companion to updateMemberContactInfo, but always upserts (unlike that
+// UPDATE-only function) into a table that isn't scoped to group
+// membership at all. This exists because contacts.upsert/update can —
+// and in practice does — fire for a JID before that person's members
+// row is ever created (e.g. a group member who hasn't posted yet, so
+// syncMembershipList() hasn't inserted them). Without somewhere
+// membership-independent to land, that contact info is just lost:
+// updateMemberContactInfo() is a no-op against a row that doesn't
+// exist yet, and by the time the row does get created (next
+// refreshMembership() call), the one-time contact event that knew
+// their real name has already come and gone. Storing it here means
+// refreshMembership() can still look it up whenever it eventually
+// runs, regardless of which happened first.
+function upsertContactInfo(jid, { name, phone }) {
+  if (!name && !phone) return;
+  db.prepare(
+    `INSERT INTO contacts (jid, name, phone, updated_at) VALUES (@jid, @name, @phone, @now)
+     ON CONFLICT(jid) DO UPDATE SET
+       name = COALESCE(excluded.name, contacts.name),
+       phone = COALESCE(excluded.phone, contacts.phone),
+       updated_at = excluded.updated_at`
+  ).run({ jid, name: name || null, phone: phone || null, now: Date.now() });
+}
+
+function getContactInfo(jid) {
+  return db.prepare('SELECT name, phone FROM contacts WHERE jid = ?').get(jid);
 }
 
 // Admins are included here deliberately (as of this query) — earlier
@@ -351,6 +386,8 @@ module.exports = {
   getActiveMembers,
   getMemberByJid,
   updateMemberContactInfo,
+  upsertContactInfo,
+  getContactInfo,
   getKV,
   setKV,
   listTitles,
