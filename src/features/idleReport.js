@@ -39,17 +39,16 @@ async function refreshMembership(sock, groupJid) {
   }
   const participants = metadata.participants.map((p) => {
     // Prefer an actual WhatsApp name Baileys already knows (push name,
-    // then verified/business name), then a resolved phone number if
-    // this participant's `id` is an opaque @lid id rather than a real
-    // phone-based JID. If none of those are available, pass null
-    // instead of falling back to the raw JID/LID digits —
-    // syncMembershipList() then keeps whatever name we already learned
-    // for them (e.g. from a message they sent) instead of overwriting
-    // it with a meaningless number. As of Baileys 7, phoneNumber should
-    // actually be populated here for most @lid participants (it never
-    // was in 6.7.9 — the field didn't exist yet); a participant with
-    // neither a name nor a resolvable phone number is now the rare
-    // case rather than the norm.
+    // then verified/business name). Deliberately do NOT fall back to
+    // the resolved phone number here, even though it's usually
+    // available now — the dashboard has its own dedicated Contact
+    // column for that, and this `name` value gets upserted into
+    // members.name via a COALESCE that treats non-null as "use this".
+    // Falling back to resolvedPhone would mean every dashboard load
+    // (server.js calls refreshMembership() on every /api/member-activity
+    // request) overwrites a real name already learned via
+    // contacts.upsert with a plain digit string. Passing null instead
+    // lets that COALESCE leave the real name alone.
     const resolvedPhone = p.phoneNumber ? p.phoneNumber.split('@')[0] : null;
     if (DIAG_LOG_MEMBERSHIP) {
       console.log(
@@ -58,7 +57,7 @@ async function refreshMembership(sock, groupJid) {
     }
     return {
       jid: p.id,
-      name: p.name || p.notify || p.verifiedName || resolvedPhone || null,
+      name: p.name || p.notify || p.verifiedName || null,
       // Prefer WhatsApp's own resolved phone number for this participant
       // (only available some of the time for @lid participants); fall
       // back to pulling it straight out of the JID, which only works
