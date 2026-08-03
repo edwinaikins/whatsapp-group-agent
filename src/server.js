@@ -332,7 +332,7 @@ function start(sock, cfg) {
   // per list, since it's a live round-trip to WhatsApp.
   app.get('/api/member-activity', async (req, res) => {
     try {
-      await idleReport.refreshMembership(sock, cfg.groupJid);
+      await idleReport.refreshMembership(sock, cfg.groupJid, cfg.botPhoneNumber);
     } catch (err) {
       console.error('[server] Failed to refresh membership before member-activity list:', err.message);
     }

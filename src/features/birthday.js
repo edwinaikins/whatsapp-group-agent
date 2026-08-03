@@ -24,6 +24,34 @@ function register(sock, cfg) {
 
       const template = getKV(TEMPLATE_KV_KEY, birthdays.messageTemplate);
 
+      // Rename the group subject to call out today's birthday person (or
+      // everyone, if more than one falls on the same day). Group subjects
+      // are plain text only — WhatsApp has no mention/tag rendering
+      // outside a message body — so this is just their name(s), not a
+      // tappable @tag. Same pattern as titleRotator.js and
+      // scheduledPosts.js's own `type === 'rename'` action: a rename is a
+      // one-off, permanent change to the subject, not reverted afterward.
+      // Concretely here that means titleRotator's own independently
+      // scheduled rotation (default weekly) will naturally overwrite this
+      // birthday title the next time it runs — consistent with how a
+      // manual/scheduled rename already behaves elsewhere in this app.
+      const names = todays.map((rec) => rec.name || 'friend');
+      let namesList;
+      if (names.length === 1) {
+        namesList = names[0];
+      } else if (names.length === 2) {
+        namesList = `${names[0]} & ${names[1]}`;
+      } else {
+        namesList = `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
+      }
+      const birthdayTitle = `Happy Birthday ${namesList}!🎉`;
+      try {
+        await sock.groupUpdateSubject(groupJid, birthdayTitle);
+        console.log(`[birthday] Renamed group to "${birthdayTitle}".`);
+      } catch (err) {
+        console.error('[birthday] Failed to rename group:', err.message);
+      }
+
       for (const rec of todays) {
         const name = rec.name || 'friend';
         const phone = String(rec.phone || '').replace(/\D/g, '');

@@ -28,16 +28,32 @@ function applySchedule(cronExpr) {
 // two log lines below) once that's confirmed.
 const DIAG_LOG_MEMBERSHIP = true;
 
-async function refreshMembership(sock, groupJid) {
+async function refreshMembership(sock, groupJid, botPhoneNumber) {
   const metadata = await sock.groupMetadata(groupJid);
+  // The bot's own number shows up as a normal participant in
+  // groupMetadata() (it has to be a group member to operate at all), but
+  // it has no business appearing in the Active/Inactive dashboard lists.
+  // Filter it out before anything else touches the participant list, so
+  // it's excluded from both the idle-report tagging and syncMembershipList
+  // (whose existing "no longer a participant" cleanup then removes any
+  // pre-existing members row for it too). Matched on phone digits rather
+  // than JID, since the bot can show up under either a phone-based JID or
+  // an @lid one depending on how WhatsApp resolves it.
+  const rawParticipants = botPhoneNumber
+    ? metadata.participants.filter((p) => {
+        const resolvedPhone = p.phoneNumber ? p.phoneNumber.split('@')[0] : null;
+        const idPhone = phoneFromJid(p.id);
+        return resolvedPhone !== botPhoneNumber && idPhone !== botPhoneNumber;
+      })
+    : metadata.participants;
   if (DIAG_LOG_MEMBERSHIP) {
-    const lidCount = metadata.participants.filter((p) => p.id.endsWith('@lid')).length;
-    const withPhoneNumber = metadata.participants.filter((p) => !!p.phoneNumber).length;
+    const lidCount = rawParticipants.filter((p) => p.id.endsWith('@lid')).length;
+    const withPhoneNumber = rawParticipants.filter((p) => !!p.phoneNumber).length;
     console.log(
-      `[idleReport:diag] ${metadata.participants.length} participants — ${lidCount} are @lid, ${withPhoneNumber} have phoneNumber set`
+      `[idleReport:diag] ${rawParticipants.length} participants (bot excluded) — ${lidCount} are @lid, ${withPhoneNumber} have phoneNumber set`
     );
   }
-  const participants = metadata.participants.map((p) => {
+  const participants = rawParticipants.map((p) => {
     // Prefer an actual WhatsApp name Baileys already knows (push name,
     // then verified/business name), then whatever the contacts-sync
     // cache learned about this JID previously (see upsertContactInfo()
@@ -103,7 +119,7 @@ function register(sock, cfg) {
   boundTimezone = timezone;
   boundRun = async () => {
     try {
-      await refreshMembership(sock, groupJid);
+      await refreshMembership(sock, groupJid, cfg.botPhoneNumber);
       const idleMembers = getIdleMembers(idleReport.idleAfterDays);
       if (!idleMembers.length) {
         console.log('[idleReport] No idle members this cycle.');
