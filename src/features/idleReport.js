@@ -54,7 +54,15 @@ async function refreshMembership(sock, groupJid) {
     // contacts.upsert with a plain digit string. Passing null instead
     // lets that COALESCE leave the real name alone.
     const resolvedPhone = p.phoneNumber ? p.phoneNumber.split('@')[0] : null;
-    const cached = getContactInfo(p.id);
+    // contacts.upsert/update often hands us the phone-based JID as
+    // `c.id` (that's how WhatsApp's own address-book sync identifies
+    // someone), even though groupMetadata() reports this same person
+    // under their opaque @lid `p.id` for privacy. Looking the cache up
+    // by p.id alone misses that entry entirely — check the phone-based
+    // JID too whenever we have one, since that's very often the key it
+    // was actually cached under.
+    const phoneJid = resolvedPhone ? `${resolvedPhone}@s.whatsapp.net` : null;
+    const cached = getContactInfo(p.id) || (phoneJid ? getContactInfo(phoneJid) : null);
     if (DIAG_LOG_MEMBERSHIP) {
       console.log(
         `[idleReport:diag] id=${p.id} phoneNumber=${p.phoneNumber || 'none'} name=${p.name || 'none'} notify=${p.notify || 'none'} verifiedName=${p.verifiedName || 'none'} cachedName=${(cached && cached.name) || 'none'}`

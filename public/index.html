@@ -783,6 +783,12 @@ function refreshAll() {
 }
 refreshAll();
 setInterval(refreshStatus, 15000);
+// Member activity does a live round-trip to WhatsApp (groupMetadata())
+// on every call, so it's polled less aggressively than the lightweight
+// status check above — every 30s keeps the Inactive/Active lists
+// reasonably fresh (e.g. as contact-sync names keep filling in)
+// without hammering the connection.
+setInterval(loadMemberActivity, 30000);
 </script>
 
 </body>
