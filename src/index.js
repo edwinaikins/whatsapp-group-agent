@@ -7,6 +7,7 @@ const dailyActivity = require('./features/dailyActivity');
 const idleReport = require('./features/idleReport');
 const birthday = require('./features/birthday');
 const scheduledPosts = require('./features/scheduledPosts');
+const connectionWatchdog = require('./features/connectionWatchdog');
 
 // TEMP DIAGNOSTIC — same purpose as idleReport.js's DIAG_LOG_MEMBERSHIP:
 // find out whether contacts.upsert/contacts.update ever actually fire
@@ -111,6 +112,7 @@ async function main() {
   idleReport.register(sock, cfg);
   birthday.register(sock, cfg);
   scheduledPosts.register(sock, cfg);
+  connectionWatchdog.register(sock, cfg);
 
   console.log('[startup] All scheduled features registered. Waiting for cron ticks...');
 
